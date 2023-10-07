@@ -1,10 +1,11 @@
 # Virtual Assistant
-This project was built to test out the different technologies emerging that allow deep-faked virtual assistants. It wasn't built for performance nor as an actual virtual assistant that could be used for production purposes.  The performance is too slow and it wasn't built with WebRTC or streaming in mind.  As new services emerge and those used here improve, that might become more realistic.  Feel free to submit pull requests for new providers.
+This project was built to test out the different technologies emerging that allow deep-faked virtual assistants. It wasn't built for performance nor as an actual virtual assistant that could be used for production purposes.  The performance is too slow, and it wasn't built with WebRTC or streaming in mind.  On average, it takes 3-4 seconds for a final generated video to display.  That's an eternity if you were to try to engage in a conversation.  As new services emerge and those used here improve, that might become more realistic.  Feel free to submit pull requests for new providers.
 
 Before creating a new persona, you should ensure you have consent from any real people being deep-faked.
 
 ## Setup
 You'll need a few accounts setup to make this work and then access tokens added into the config.  Configuration should be added to a profile specific application.properties.  This is easiest done by creating application-default.properties and overriding the properties needed.
+
 ### AWS
 Profile pictures, audio files, and persona videos are all stored in an S3 bucket.  You'll need an AWS account with a public S3 bucket configured.  Additionally, you'll need to setup a service account in AWS to have access to the bucket.
 #### Configuration
@@ -21,6 +22,14 @@ Eleven Labs is used for creating the voice model.  It's easy to train, with 30-6
 ChatGPT drives the conversation between the questions and the answers.  This is meant to be brief, but you can modify the prompts in the configuration to drive more thorough and robust answers.
 #### Configuration
 1. chatgpt.api.key=_api key for ChatGPT to the conversational chat API_
+
+### D-ID
+D-ID is what animates a profile picture with the audio to create animated avatar.  This is an area where I expect to see much better and cheaper alternatives to start emerging.  The requirements here are:
+1. A decent API
+2. Ability to use an human-based avatar based on a profile picture. 
+3. Ability to provide audio directly for the voice OR ability to specify a trained voice model.
+
+All other offerings I've found doing support #2 and #3 together.
 
 ## Usage
 ### Setting Up Personas
