@@ -1,4 +1,6 @@
-package ai.asktheexpert.virtualassistant;
+package ai.asktheexpert.virtualassistant.services;
+
+import ai.asktheexpert.virtualassistant.models.Persona;
 
 import java.io.IOException;
 import java.util.Collection;

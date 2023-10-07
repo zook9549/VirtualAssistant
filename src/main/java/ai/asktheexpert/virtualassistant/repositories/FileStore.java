@@ -1,4 +1,4 @@
-package ai.asktheexpert.virtualassistant;
+package ai.asktheexpert.virtualassistant.repositories;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;

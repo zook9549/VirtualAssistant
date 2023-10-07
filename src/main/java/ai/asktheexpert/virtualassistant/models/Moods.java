@@ -1,4 +1,4 @@
-package ai.asktheexpert.virtualassistant;
+package ai.asktheexpert.virtualassistant.models;
 
 import java.util.Random;
 

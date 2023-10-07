@@ -1,5 +1,7 @@
-package ai.asktheexpert.virtualassistant;
+package ai.asktheexpert.virtualassistant.services;
 
+import ai.asktheexpert.virtualassistant.repositories.FileStore;
+import ai.asktheexpert.virtualassistant.models.Persona;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

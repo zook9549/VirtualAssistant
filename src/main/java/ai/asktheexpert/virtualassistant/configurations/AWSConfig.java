@@ -1,4 +1,4 @@
-package ai.asktheexpert.virtualassistant;
+package ai.asktheexpert.virtualassistant.configurations;
 
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;

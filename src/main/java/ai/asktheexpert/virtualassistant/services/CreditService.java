@@ -1,4 +1,4 @@
-package ai.asktheexpert.virtualassistant;
+package ai.asktheexpert.virtualassistant.services;
 
 public interface CreditService {
     int creditsRemaining();

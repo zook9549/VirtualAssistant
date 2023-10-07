@@ -1,4 +1,4 @@
-package ai.asktheexpert.virtualassistant;
+package ai.asktheexpert.virtualassistant.repositories;
 
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;

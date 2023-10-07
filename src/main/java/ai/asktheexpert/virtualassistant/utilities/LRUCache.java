@@ -1,4 +1,4 @@
-package ai.asktheexpert.virtualassistant;
+package ai.asktheexpert.virtualassistant.utilities;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
