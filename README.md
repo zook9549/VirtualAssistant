@@ -26,10 +26,10 @@ ChatGPT drives the conversation between the questions and the answers.  This is 
 ### D-ID
 D-ID is what animates a profile picture with the audio to create animated avatar.  This is an area where I expect to see much better and cheaper alternatives to start emerging.  The requirements here are:
 1. A decent API
-2. Ability to use an human-based avatar based on a profile picture. 
+2. Ability to use a human-based avatar based on a profile picture. 
 3. Ability to provide audio directly for the voice OR ability to specify a trained voice model.
 
-All other offerings I've found doing support #2 and #3 together.
+All other offerings I've found don't do a good job of supporting #2 and #3 together.
 
 ## Usage
 ### Setting Up Personas
