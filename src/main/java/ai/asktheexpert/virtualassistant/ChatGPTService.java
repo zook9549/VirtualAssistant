@@ -45,13 +45,10 @@ public class ChatGPTService implements AnswerService {
         requestBody.put("model", "gpt-4");
         requestBody.put("messages", conversation);
 
-        // Create an HttpEntity object
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
-
-        // Make the API call
-        String gptApiUrl = "https://api.openai.com/v1/chat/completions";
+;
         RestTemplate restTemplate = new RestTemplate();
-        ResponseEntity<Map> response = restTemplate.exchange(gptApiUrl, HttpMethod.POST, entity, Map.class);
+        ResponseEntity<Map> response = restTemplate.exchange(chatGptUrl, HttpMethod.POST, entity, Map.class);
 
         // Extract the answer
         Map<String, Object> responseBody = response.getBody();
@@ -62,5 +59,7 @@ public class ChatGPTService implements AnswerService {
 
     @Value("${chatgpt.api.key}")
     private String chatgptApiKey;
+    @Value("${chatgpt.api.url}")
+    private String chatGptUrl;
     private static final Logger log = LoggerFactory.getLogger(ChatGPTService.class);
 }
