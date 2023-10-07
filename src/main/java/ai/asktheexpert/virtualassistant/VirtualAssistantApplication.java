@@ -22,7 +22,7 @@ import java.util.*;
 @EnableScheduling
 public class VirtualAssistantApplication {
 
-    public VirtualAssistantApplication(FileStore fileStore, TextToSpeechService textToSpeechService, PersonaService personaService, AnswerService answerService, AvatarService avatarService) {
+    public VirtualAssistantApplication(FileStore fileStore, ElevenLabsService textToSpeechService, PersonaService personaService, AnswerService answerService, AvatarService avatarService) {
         this.fileStore = fileStore;
         this.textToSpeechService = textToSpeechService;
         this.personaService = personaService;
@@ -73,7 +73,7 @@ public class VirtualAssistantApplication {
         response.setResponse(answer);
         response.setAudio(audio);
         try {
-            byte[] video = getVideo(persona, answer);
+            byte[] video = getVideo(persona, answer, audio);
             response.setVideo(video);
         } catch (Exception ex) {
             log.error("Failed to generate video", ex);
@@ -94,12 +94,11 @@ public class VirtualAssistantApplication {
         return audio;
     }
 
-    public byte[] getVideo(Persona persona, String text) throws Exception {
+    public byte[] getVideo(Persona persona, String text, byte[] audio) throws Exception {
         String key = (persona.getName() + ":" + text).toLowerCase();
         byte[] video = (byte[]) cachedVideo.get(key);
         if (video == null) {
             log.debug("Getting video for {}", key);
-            byte[] audio = getTextToSpeech(persona.getName(), text);
             String audioUrl = fileStore.save((key.hashCode() + ".mp3"), audio);
             URL url = new URL(audioUrl);
             video = avatarService.getVideo(persona, url);

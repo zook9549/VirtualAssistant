@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Map;
 
 @Service
-public class DigitalIDService implements AvatarService {
+public class DigitalIDService implements AvatarService, CreditService {
     public DigitalIDService(FileStore fileStore, ObjectMapper objectMapper) {
         this.fileStore = fileStore;
         this.objectMapper = objectMapper;
@@ -26,7 +26,7 @@ public class DigitalIDService implements AvatarService {
     public byte[] getVideo(Persona persona, URL audioUrl) throws Exception {
         Map<String, Object> script = new HashMap<>();
         script.put("type", "audio");
-        script.put("audio_url", audioUrl.getPath());
+        script.put("audio_url", audioUrl.toString());
         return getVideo(persona, script);
     }
 
