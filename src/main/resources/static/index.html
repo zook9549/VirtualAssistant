@@ -113,6 +113,25 @@
         #talk-video2 {
             display: none;
         }
+
+        .textarea-container {
+             position: relative;
+         }
+
+        #question {
+            position: relative;
+            padding-right: 20px;
+        }
+
+        #cancel {
+            position: absolute;
+            top: 5px;
+            cursor: pointer;
+            font-size: 36px;
+            background-color: #f3f3f3;  /* Light background for visibility */
+            border-radius: 50%;         /* Makes it circular */
+            padding: 2px 5px;
+        }
     </style>
     <script>
 
@@ -301,6 +320,11 @@
             document.body.removeChild(a);
         }
 
+        function clearTextarea() {
+            document.getElementById('question').value = '';
+            document.getElementById('question').focus();
+        }
+
         function shuffle(array) {
             for (let i = array.length - 1; i > 0; i--) {
                 // Generate a random index between 0 and i (inclusive)
@@ -338,7 +362,10 @@
                 </options>
             </select>
         </div>
-        <textarea id="question"></textarea>
+        <div class="textarea-container">
+            <textarea id="question" placeholder="Enter your question here..."></textarea>
+            <span class="material-icons" onclick="clearTextarea()" id="cancel" title="Clear the Question">cancel</span>
+        </div>
         <br/>
         <button id="talk-button" type="button" onclick="talkToMe()">Ask</button>
     </div>
