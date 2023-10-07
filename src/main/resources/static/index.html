@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Ask the Expert</title>
+    <link rel="icon" href="/favicon.ico" type="image/x-icon">
+    <link rel="preconnect" href="https://fonts.googleapis.com"/>
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+    <link
+            href="https://fonts.googleapis.com/css2?family=Mulish:wght@300;400;700&display=swap"
+            rel="stylesheet"
+    />
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+
+    <style>
+        #mood, #person {
+            font-size: xxx-large;
+            width: 400px;
+        }
+        body * {
+            font-family: 'Mulish', sans-serif;
+            text-align: center;
+            font-size: xx-large;
+        }
+
+        .material-icons {
+            background-color: #7459fe;
+            color: #fff;
+            font-size: 24px;
+        }
+
+        button {
+            padding: 10px 20px;
+            border-radius: 5px;
+            border: none;
+            font-size: xxx-large;
+            margin: 10px 5px;
+            background-color: #7459fe;
+            color: #fff;
+            width: 80vw;
+            max-width:800px;
+            height: 7vh;
+            min-height: 100px;
+        }
+
+        button:hover {
+            background-color: #9480ff;
+            cursor: pointer;
+            transition: all 0.2s ease-out;
+        }
+
+        #download {
+            border-radius: 5px;
+            border: none;
+            background-color: #7459fe;
+            color: #fff;;
+            font-size: 36px;
+            margin-left: 10px;
+        }
+
+        #download:hover {
+            background-color: #9480ff;
+            cursor: pointer;
+            transition: all 0.2s ease-out;
+        }
+        #mediaBar {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            visibility: hidden;
+        }
+        #status div {
+            padding-bottom: 10px;
+        }
+
+        #talk div {
+            padding-bottom: 10px;
+        }
+
+        #video-wrapper {
+            background: url(bg.png) top;
+        }
+
+        #video-wrapper div {
+            width: 100vw;
+            margin: 0 auto;
+            padding: 50px 0 0 0;
+        }
+
+        video {
+            /*width: 80vw*/;
+            max-height: 800px;
+            max-width:800px;
+            height: 50vh;
+            border-radius: 50%;
+            object-fit: cover;
+            overflow: hidden;
+            background-color: #fff;
+        }
+
+        textarea {
+            width: 80vw;
+            max-width:800px;
+            height: 10vh;
+            min-height: 100px;
+            padding-top: 10px;
+            margin-top: 10px;
+        }
+
+        #talk-video2 {
+            display: none;
+        }
+    </style>
+    <script>
+
+        let base64String;
+        let queuedVideo;
+        let startingVideos = new Map();
+        let introVideos = new Map();
+        let introduced = new Map();
+        let idleVideo = new Map();
+        let fetchingAnswer = false;
+
+        window.onload = function () {
+            document.getElementById('talk-video').addEventListener('ended', playIdleVideo, false);
+            document.getElementById('talk-video2').addEventListener('ended', transitionVideo, false);
+            document.getElementById('talk-video2').addEventListener('error', playIdleVideo, false);
+            document.getElementById('person').addEventListener('change', introPersona, false);
+
+            fetch(`./listPersonas`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            })
+                .then(response => response.json())
+                .then(data => setPersonas(data));
+
+            fetch(`./listMoods`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            })
+                .then(response => response.json())
+                .then(data => setMoods(data));
+        }
+
+        function introPersona() {
+            let name = document.getElementById('person').value;
+            if(!introduced.get(name) && !fetchingAnswer) {
+                let videoName = getRandomVideo(introVideos.get(name));
+                playVideo(videoName);
+                introduced.set(name, true);
+            }
+        }
+
+        function playIdleVideo() {
+            console.log("Playing idle video");
+            let talkVideo = document.getElementById('talk-video');
+            talkVideo.src = idleVideo.get(document.getElementById('person').value);
+            talkVideo.load();
+            talkVideo.loop = true;
+        }
+
+        function transitionVideo() {
+            let video2 = document.getElementById('talk-video2');
+            if (queuedVideo != null && video2.src != queuedVideo) {
+                console.log("Playing queued up video: " + queuedVideo)
+                playVideo(queuedVideo);
+            } else {
+                console.log("Transitioning to idle video");
+                document.getElementById('talk-video2').pause();
+                document.getElementById('talk-video').style.display = "inline-flex";
+                document.getElementById('talk-video2').style.display = "none";
+                playIdleVideo();
+                queuedVideo = null;
+            }
+        }
+
+        function talkToMe() {
+            let name = document.getElementById('person').value.toLowerCase();
+            document.getElementById('mediaBar').style.visibility = "hidden";
+            playVideo(getRandomVideo(startingVideos.get(name)));
+            fetchingAnswer = true;
+            document.getElementById('answer').innerText = "Generating response...";
+            questionUrl = "./askWithDetails?person=" + document.getElementById('person').value + "&mood=" + document.getElementById('mood').value + "&question=" + encodeURIComponent(document.getElementById('question').value);
+            fetch(questionUrl, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            }).then(response => response.json())
+                .then(data => parseResponse(data));
+        }
+
+        function parseResponse(data) {
+            if(data != null) {
+                document.getElementById('answer').innerText = data.response;
+                if(data.audio != null) {
+                    base64String = "data:audio/mp3;base64," + data.audio;
+                    playAudio();
+                }
+                if (data.video != null) {
+                    let videoString = "data:video/mp4;base64," + data.video;
+                    playVideo(videoString);
+                }
+                console.log("Parsed response for audio and video");
+            } else {
+                document.getElementById('answer').innerText = "Error occurred.  Please try again.";
+            }
+            fetchingAnswer = false;
+        }
+
+        function playAudio() {
+            if (base64String != null) {
+                let mediaBar = document.getElementById('mediaBar');
+                let audioElement = document.getElementById('audioAnswer');
+                audioElement.src = base64String;
+                mediaBar.style.visibility = "visible";
+            }
+        }
+
+        function playVideo(src) {
+            let idleElement = document.getElementById('talk-video');
+            let videoElement = document.getElementById('talk-video2');
+            if (videoElement.src != "" || src != null) {
+                idleElement.style.display = "none";
+                videoElement.style.display = "inline-flex";
+                if (src != null) {
+                    if (isVideoPlaying(videoElement)) {
+                        console.log("Video response came in while playing.  Queueing up.");
+                        queuedVideo = src;
+                    } else {
+                        console.log("Playing response");
+                        videoElement.src = src;
+                    }
+                } else {
+                    console.log("Playing existing video")
+                    videoElement.play()
+                }
+            }
+            videoElement.loop = false;
+        }
+
+        function isVideoPlaying(video) {
+            return !video.paused && !video.ended && video.currentTime > 0;
+        }
+
+        function setPersonas(data) {
+            var select = document.getElementById('person');
+            for (let i = 0; i < data.length; i++) {
+                var option = document.createElement('option');
+                option.value = data[i].name.toLowerCase();
+                option.text = data[i].name;
+                select.appendChild(option);
+                startingVideos.set(data[i].name.toLowerCase(), data[i].startingVideos);
+                introVideos.set(data[i].name.toLowerCase(), data[i].introVideos);
+                introduced.set(data[i].name.toLowerCase(), false);
+                idleVideo.set(data[i].name.toLowerCase(), data[i].idleVideoUrl);
+            }
+            playIdleVideo();
+        }
+
+        function setMoods(data) {
+            var select = document.getElementById('mood');
+            for (let i = 0; i < data.length; i++) {
+                var option = document.createElement('option');
+                option.value = data[i];
+                option.text = data[i];
+                select.appendChild(option);
+            }
+        }
+
+        function getRandomVideo(videos) {
+            let num = Math.floor(Math.random() * videos.length) + 1;
+            return videos[num-1];
+        }
+
+        function downloadVideo() {
+            const a = document.createElement('a');
+            a.href = document.getElementById("talk-video2").src;
+            a.download = document.getElementById('person').value + ".mp4";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+    </script>
+</head>
+<body>
+<div id="content">
+    <div id="video-wrapper">
+        <div>
+            <video id="talk-video" autoplay muted loop playsinline onclick="playVideo()" >
+                <source id="talk-video-src" src="" type="video/mp4">
+            </video>
+            <video id="talk-video2" autoplay loop playsinline
+                   onclick="transitionVideo()">
+                <source src="" type="video/mp4">
+            </video>
+        </div>
+    </div>
+    <br/>
+    <div>
+        <div>
+        <select id="mood">
+            <options>
+            </options>
+        </select>
+        <select id="person" onchange="playIdleVideo()">
+            <options>
+            </options>
+        </select>
+        </div>
+        <textarea id="question"></textarea>
+        <br/>
+        <button id="talk-button" type="button" onclick="talkToMe()">Ask</button>
+    </div>
+    <br/>
+    <div id="mediaBar">
+        <audio id="audioAnswer" controls>
+            <source src="" type="audio/mp3">
+            Your browser does not support the audio element.
+        </audio>
+        <span class="material-icons" onclick="downloadVideo()" id="download" title="Download the video">download</span>
+    </div>
+    <div id="answer"></div>
+</div>
+</body>
+</html>

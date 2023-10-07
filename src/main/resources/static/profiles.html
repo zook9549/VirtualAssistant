@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Add Expert Profile</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com"/>
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+    <link
+            href="https://fonts.googleapis.com/css2?family=Mulish:wght@300;400;700&display=swap"
+            rel="stylesheet"
+    />
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+
+    <style>
+        body * {
+            font-family: 'Mulish', sans-serif;
+            text-align: center;
+            font-size: xx-large;
+        }
+
+        form {
+            width: 500px;
+            margin: 0 auto;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        input[type="text"],
+        input[type="file"],
+        textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        .material-icons {
+            color: #7459fe;
+            font-size: 36px;
+        }
+
+        button {
+            padding: 10px 20px;
+            border-radius: 5px;
+            border: none;
+            margin: 0 5px;
+            background-color: #7459fe;
+            color: #fff;
+            width: 500px;
+        }
+
+        button:hover {
+            background-color: #9480ff;
+            cursor: pointer;
+            transition: all 0.2s ease-out;
+        }
+
+        #status div {
+            padding-bottom: 10px;
+        }
+
+
+        textarea {
+            width: 350px;
+            height: 150px;
+        }
+
+        #soundSample {
+            margin-top: 30px;
+            width: 500px;
+        }
+
+        #add {
+            font-size: 32pt;
+        }
+
+        a {
+            font-size: medium;
+        }
+
+        #audioPlay {
+            visibility: hidden;
+            font-size: 50px;
+            cursor: pointer;
+        }
+    </style>
+    <script>
+        let mediaRecorder;
+        let audioChunks = [];
+        let audioBlob;
+        window.addEventListener("load", function () {
+            document.getElementById("startRecord").addEventListener("click", function () {
+                audioBlob = null;
+                audioChunks = [];
+                mediaRecorder = null;
+                // Ask the user for permission to access the microphone
+                navigator.mediaDevices.getUserMedia({audio: true})
+                    .then(stream => {
+                        mediaRecorder = new MediaRecorder(stream);
+
+                        // When data is available, add it to our audio chunks
+                        mediaRecorder.ondataavailable = event => {
+                            audioChunks.push(event.data);
+                        };
+
+                        // When the recording ends, create a blob from the audio chunks and set it as the audio src
+                        mediaRecorder.onstop = () => {
+                            audioBlob = new Blob(audioChunks, {
+                                type: 'audio/wav'
+                            });
+                            const audioUrl = URL.createObjectURL(audioBlob);
+                            const audio = new Audio(audioUrl);
+                            document.getElementById("soundSample").src = audioUrl;
+                        };
+
+                        // Start recording
+                        mediaRecorder.start();
+                        document.getElementById("startRecord").disabled = true;
+                        document.getElementById("stopRecord").disabled = false;
+                        document.getElementById("stopRecord2").disabled = false;
+                        document.getElementById("startRecord").style.display = "none";
+                        document.getElementById("stopRecord").style.display = "inline";
+                        document.getElementById("stopRecord2").style.display = "inline";
+                    });
+            });
+
+            document.getElementById("stopRecord").addEventListener("click", stopRecording);
+            document.getElementById("stopRecord2").addEventListener("click", stopRecording);
+        });
+
+        function stopRecording() {
+                mediaRecorder.stop();
+                document.getElementById("startRecord").disabled = false;
+                document.getElementById("stopRecord").disabled = true;
+                document.getElementById("stopRecord2").disabled = true;
+                document.getElementById("startRecord").style.display = "inline";
+                document.getElementById("stopRecord").style.display = "none";
+                document.getElementById("stopRecord2").style.display = "none";
+                document.getElementById("soundSample").style.display = "inline-flex";
+        }
+
+        function submitForm() {
+            const formData = new FormData(document.getElementById('profileForm'));
+            formData.append('audioSample', audioBlob);
+
+            fetch('./addPersona', {
+                method: 'POST',
+                body: formData
+            }).then(response => {
+                console.log('Audio uploaded successfully:', response);
+                document.getElementById("answer").innerText = "Persona Added!"
+            });
+        }
+
+    </script>
+</head>
+<body>
+<a href="/">Return to Ask the Expert</a> |
+<a href="/listPersonas?refresh=true">Refresh Personas</a>
+<form action="./addPersona" method="post" enctype="multipart/form-data" id="profileForm">
+    <div id="content">
+        <div class="form-group">
+            <label for="personaName">Name</label>
+            <input type="text" id="personaName" name="personaName" placeholder="Enter your name"/>
+        </div>
+
+        <div class="form-group">
+            <label for="personaRole">Description</label>
+            <input type="text" id="personaRole" name="personaRole" placeholder="Your role, personality, etc."/>
+        </div>
+        <div class="form-group">
+            <label for="imageUpload">Profile Picture</label>
+            <input type="file" name="profilePicture" id="imageUpload" accept="image/*">
+        </div>
+
+        <div class="form-group">
+            <label id="voice-label" for="soundSample">Voice Sample</label>
+            <button id="startRecord" type="button">Start Recording</button>
+            <button id="stopRecord" type="button" disabled style="display:none;">Stop Recording</button>
+            <audio id="soundSample" controls style="display:none;"></audio>
+            <div id="readingScript">
+                <p><em>Read the following script while recording to train the voice model. Don't worry about exact pronunciation. Hit Start Recording to start and then Stop Recording when done.  There is no need to use Voice Upload if you record your voice.  For best results, this should be done on a mobile device or a high-quality microphone in a quiet spot.</em></p>
+                <p>Luna, a young explorer with raven-black hair and twinkling blue eyes, was often told tales of a lost city named
+                "Phonetica". This city, veiled amidst the thick woods of "Lingua", was believed to house a golden bell that could
+                resonate with the very essence of the universe.</p>
+                <p>One sunny morning, Luna, filled with determination, set off to uncover this mythic city. With every step, her
+                leather boots echoed, announcing her journey. Her backpack contained essentials: water, a compass, a map, some
+                sandwiches, and of course, her trusted binoculars.
+                </p>
+                <button id="stopRecord2" type="button" disabled style="display:none;">Stop Recording</button>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label id="voiceupload-label" for="voiceUpload">Voice Upload</label>
+            <input type="file" name="voiceUpload" placeholder="Optional upload"
+                   id="voiceUpload"
+                   accept="audio/*">
+        </div>
+    </div>
+    <div style="margin-top:50px">
+        <button type="button" onclick="submitForm()" id="add">Add Profile</button>
+    </div>
+</form>
+
+<div id="answer"></div>
+<br/><br/>
+
+</body>
+</html>
