@@ -17,6 +17,7 @@
             font-size: xxx-large;
             width: 400px;
         }
+
         body * {
             font-family: 'Mulish', sans-serif;
             text-align: center;
@@ -38,7 +39,7 @@
             background-color: #7459fe;
             color: #fff;
             width: 80vw;
-            max-width:800px;
+            max-width: 800px;
             height: 7vh;
             min-height: 100px;
         }
@@ -63,12 +64,14 @@
             cursor: pointer;
             transition: all 0.2s ease-out;
         }
+
         #mediaBar {
             display: flex;
             justify-content: center;
             align-items: center;
             visibility: hidden;
         }
+
         #status div {
             padding-bottom: 10px;
         }
@@ -90,7 +93,7 @@
         video {
             /*width: 80vw*/;
             max-height: 800px;
-            max-width:800px;
+            max-width: 800px;
             height: 50vh;
             border-radius: 50%;
             object-fit: cover;
@@ -100,7 +103,7 @@
 
         textarea {
             width: 80vw;
-            max-width:800px;
+            max-width: 800px;
             height: 10vh;
             min-height: 100px;
             padding-top: 10px;
@@ -116,7 +119,9 @@
         let base64String;
         let queuedVideo;
         let startingVideos = new Map();
+        let startingVideosIndex = new Map();
         let introVideos = new Map();
+        let introVideosIndex = new Map();
         let introduced = new Map();
         let idleVideo = new Map();
         let fetchingAnswer = false;
@@ -148,8 +153,14 @@
 
         function introPersona() {
             let name = document.getElementById('person').value;
-            if(!introduced.get(name) && !fetchingAnswer) {
-                let videoName = getRandomVideo(introVideos.get(name));
+            if (!introduced.get(name) && !fetchingAnswer) {
+                let introVideoIndex = introVideosIndex.get(name);
+                let videoName = introVideos.get(name)[introVideoIndex];
+                if (introVideoIndex >= introVideos.get(name).length - 1) {
+                    introVideosIndex.set(name, 0);
+                } else {
+                    introVideosIndex.set(name, introVideoIndex + 1);
+                }
                 playVideo(videoName);
                 introduced.set(name, true);
             }
@@ -181,7 +192,14 @@
         function talkToMe() {
             let name = document.getElementById('person').value.toLowerCase();
             document.getElementById('mediaBar').style.visibility = "hidden";
-            playVideo(getRandomVideo(startingVideos.get(name)));
+            let startingVideoIndex = startingVideosIndex.get(name);
+            let videoName = startingVideos.get(name)[startingVideoIndex];
+            if (startingVideoIndex >= startingVideos.get(name).length - 1) {
+                startingVideosIndex.set(name, 0);
+            } else {
+                startingVideosIndex.set(name, startingVideoIndex + 1);
+            }
+            playVideo(videoName);
             fetchingAnswer = true;
             document.getElementById('answer').innerText = "Generating response...";
             questionUrl = "./askWithDetails?person=" + document.getElementById('person').value + "&mood=" + document.getElementById('mood').value + "&question=" + encodeURIComponent(document.getElementById('question').value);
@@ -195,9 +213,9 @@
         }
 
         function parseResponse(data) {
-            if(data != null) {
+            if (data != null) {
                 document.getElementById('answer').innerText = data.response;
-                if(data.audio != null) {
+                if (data.audio != null) {
                     base64String = "data:audio/mp3;base64," + data.audio;
                     playAudio();
                 }
@@ -250,12 +268,14 @@
         function setPersonas(data) {
             var select = document.getElementById('person');
             for (let i = 0; i < data.length; i++) {
-                var option = document.createElement('option');
+                let option = document.createElement('option');
                 option.value = data[i].name.toLowerCase();
                 option.text = data[i].name;
                 select.appendChild(option);
-                startingVideos.set(data[i].name.toLowerCase(), data[i].startingVideos);
-                introVideos.set(data[i].name.toLowerCase(), data[i].introVideos);
+                startingVideosIndex.set(data[i].name.toLowerCase(), 0);
+                introVideosIndex.set(data[i].name.toLowerCase(), 0);
+                startingVideos.set(data[i].name.toLowerCase(), shuffle(data[i].startingVideos));
+                introVideos.set(data[i].name.toLowerCase(), shuffle(data[i].introVideos));
                 introduced.set(data[i].name.toLowerCase(), false);
                 idleVideo.set(data[i].name.toLowerCase(), data[i].idleVideoUrl);
             }
@@ -272,11 +292,6 @@
             }
         }
 
-        function getRandomVideo(videos) {
-            let num = Math.floor(Math.random() * videos.length) + 1;
-            return videos[num-1];
-        }
-
         function downloadVideo() {
             const a = document.createElement('a');
             a.href = document.getElementById("talk-video2").src;
@@ -285,13 +300,24 @@
             a.click();
             document.body.removeChild(a);
         }
+
+        function shuffle(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                // Generate a random index between 0 and i (inclusive)
+                let j = Math.floor(Math.random() * (i + 1));
+
+                // Swap elements at indices i and j
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
     </script>
 </head>
 <body>
 <div id="content">
     <div id="video-wrapper">
         <div>
-            <video id="talk-video" autoplay muted loop playsinline onclick="playVideo()" >
+            <video id="talk-video" autoplay muted loop playsinline onclick="playVideo()">
                 <source id="talk-video-src" src="" type="video/mp4">
             </video>
             <video id="talk-video2" autoplay loop playsinline
@@ -303,14 +329,14 @@
     <br/>
     <div>
         <div>
-        <select id="mood">
-            <options>
-            </options>
-        </select>
-        <select id="person" onchange="playIdleVideo()">
-            <options>
-            </options>
-        </select>
+            <select id="mood">
+                <options>
+                </options>
+            </select>
+            <select id="person" onchange="playIdleVideo()">
+                <options>
+                </options>
+            </select>
         </div>
         <textarea id="question"></textarea>
         <br/>
