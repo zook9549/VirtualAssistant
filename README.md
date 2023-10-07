@@ -31,6 +31,9 @@ D-ID is what animates a profile picture with the audio to create animated avatar
 
 All other offerings I've found don't do a good job of supporting #2 and #3 together.
 
+#### Configuration
+1. did.key=_api key provided through D-ID_
+
 ## Usage
 ### Setting Up Personas
 Personas are setup using ./profiles.html.  Instructions are on the page to setup the voice model and avatar.  The description you choose for the person drive the prompt engineering behind the answers.
