@@ -39,7 +39,6 @@ public class ChatGPTService implements AnswerService {
         userMessage.put("content", question);
         conversation.add(userMessage);
 
-        // Create request payload
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("max_tokens", 100);
         requestBody.put("temperature", 0.5);
@@ -47,12 +46,11 @@ public class ChatGPTService implements AnswerService {
         requestBody.put("messages", conversation);
 
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
-;
+
         RestTemplate restTemplate = new RestTemplate();
         ResponseEntity<Map> response = restTemplate.exchange(chatGptUrl, HttpMethod.POST, entity, Map.class);
 
-        // Extract the answer
-        Map<String, Object> responseBody = response.getBody();
+        Map responseBody = response.getBody();
         String answer = ((Map<?, ?>) ((Map<?, ?>) ((List<?>) responseBody.get("choices")).get(0)).get("message")).get("content").toString();
         log.debug("Completed getting answer: {}", answer);
         return answer;

@@ -1,7 +1,7 @@
 package ai.asktheexpert.virtualassistant.services;
 
-import ai.asktheexpert.virtualassistant.repositories.FileStore;
 import ai.asktheexpert.virtualassistant.models.Persona;
+import ai.asktheexpert.virtualassistant.repositories.FileStore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,6 +17,7 @@ import java.net.URL;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @Service
 public class DigitalIDService implements AvatarService, CreditService {
@@ -43,9 +44,6 @@ public class DigitalIDService implements AvatarService, CreditService {
     private byte[] getVideo(Persona persona, Map<String, Object> audioHeader) throws Exception {
         byte[] video;
         String imgUrl = fileStore.getUrl(persona.getName().toLowerCase() + ".jpg");
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("Authorization", "Basic " + didKey);
-        headers.set("Content-Type", "application/json");
 
         Map<String, Object> config = new HashMap<>();
         config.put("fluent", "false");
@@ -56,14 +54,12 @@ public class DigitalIDService implements AvatarService, CreditService {
         payload.put("source_url", imgUrl);
         payload.put("config", config);
         payload.put("script", audioHeader);
-        String jsonRequest = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(payload);
 
-        HttpEntity<String> entity = new HttpEntity<>(jsonRequest, headers);
+        HttpEntity<?> entity = getHttpEntity(payload);
 
-        // Make the API call
         RestTemplate restTemplate = new RestTemplate();
         ResponseEntity<Map> response = restTemplate.exchange(didUrl + "/talks", HttpMethod.POST, entity, Map.class);
-        String id = response.getBody().get("id").toString();
+        String id = Objects.requireNonNull(response.getBody()).get("id").toString();
         log.debug("Generated video {}", id);
         int maxTime = 20000;
         int totalTime = 0;
@@ -77,17 +73,10 @@ public class DigitalIDService implements AvatarService, CreditService {
     }
 
     public int creditsRemaining() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("Authorization", "Basic " + didKey);
-        headers.set("Content-Type", "application/json");
-
-        // Create an HttpEntity object
-        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(headers);
-
-        // Make the API call
+        HttpEntity<?> entity = getHttpEntity();
         RestTemplate restTemplate = new RestTemplate();
         ResponseEntity<Map> response = restTemplate.exchange(didUrl + "/credits", HttpMethod.GET, entity, Map.class);
-        Map vals = ((Map) ((List) response.getBody().get("credits")).get(0));
+        Map vals = (Map) ((List<?>) Objects.requireNonNull(response.getBody()).get("credits")).get(0);
         int remaining = (Integer) vals.get("remaining");
         log.debug("Credit information for D-ID: {}", vals);
         return remaining;
@@ -95,15 +84,11 @@ public class DigitalIDService implements AvatarService, CreditService {
 
     private byte[] fetchVideo(String videoId) throws Exception {
         byte[] results = null;
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("Authorization", "Basic " + didKey);
-        headers.set("Content-Type", "application/json");
-
-        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(headers);
+        HttpEntity<?> entity = getHttpEntity();
 
         RestTemplate restTemplate = new RestTemplate();
         ResponseEntity<Map> response = restTemplate.exchange(didUrl + "/talks/" + videoId, HttpMethod.GET, entity, Map.class);
-        String status = response.getBody().get("status").toString();
+        String status = Objects.requireNonNull(response.getBody()).get("status").toString();
         if (status.equals("done")) {
             String resultUrl = (String) response.getBody().get("result_url");
             if (resultUrl != null && FileStore.existsAtUrl(resultUrl)) {
@@ -113,6 +98,28 @@ public class DigitalIDService implements AvatarService, CreditService {
             throw new Exception("Unable to get idle video for " + videoId);
         }
         return results;
+    }
+
+    private HttpEntity<?> getHttpEntity() {
+        return getHttpEntity(null);
+    }
+
+    private HttpEntity<?> getHttpEntity(Map<String, Object> payload) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", "Basic " + didKey);
+        headers.set("Content-Type", "application/json");
+        if (payload != null) {
+            try {
+                String jsonRequest = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(payload);
+                return new HttpEntity<>(jsonRequest, headers);
+            } catch (Exception e) {
+                log.error("Unable to serialize payload {}", payload);
+                throw new RuntimeException(e);
+            }
+
+        } else {
+            return new HttpEntity<>(headers);
+        }
     }
 
     private boolean isPending(String status) {

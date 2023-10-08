@@ -26,30 +26,29 @@ public class ElevenLabsService implements TextToSpeechService, PersonaService {
     }
 
     public byte[] getTextToSpeech(Persona persona, String text) throws Exception {
-        String key = (persona.getName() + ":" + text).toLowerCase();
-            RestTemplate restTemplate = new RestTemplate();
-            HttpHeaders headers = new HttpHeaders();
-            headers.add("xi-api-key", tts_key);
-            headers.add("Content-Type", "application/json");
+        RestTemplate restTemplate = new RestTemplate();
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("xi-api-key", tts_key);
+        headers.add("Content-Type", "application/json");
 
 
-            Map<String, Object> config = new HashMap<>();
-            config.put("stability", ".4");
-            config.put("similarity_boost", "0.2");
-            config.put("style", "0.5");
-            config.put("use_speaker_boost", "true");
+        Map<String, Object> config = new HashMap<>();
+        config.put("stability", ".4");
+        config.put("similarity_boost", "0.2");
+        config.put("style", "0.5");
+        config.put("use_speaker_boost", "true");
 
-            Map<String, Object> payload = new HashMap<>();
-            payload.put("text", text);
-            payload.put("model_id", "eleven_multilingual_v2");
-            payload.put("voice_settings", config);
-            String jsonRequest = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(payload);
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("text", text);
+        payload.put("model_id", "eleven_multilingual_v2");
+        payload.put("voice_settings", config);
+        String jsonRequest = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(payload);
 
-            HttpEntity<String> entity = new HttpEntity<>(jsonRequest, headers);
-            String ttsFullUrl = tts_url + "/v1/text-to-speech/" + persona.getVoiceId() + "/stream?optimize_streaming_latency=0&output_format=mp3_44100_64";
-            ResponseEntity<byte[]> response = restTemplate.exchange(ttsFullUrl, HttpMethod.POST, entity, byte[].class);
-            log.debug("Completed getting text to speech");
-            return response.getBody();
+        HttpEntity<String> entity = new HttpEntity<>(jsonRequest, headers);
+        String ttsFullUrl = tts_url + "/v1/text-to-speech/" + persona.getVoiceId() + "/stream?optimize_streaming_latency=0&output_format=mp3_44100_64";
+        ResponseEntity<byte[]> response = restTemplate.exchange(ttsFullUrl, HttpMethod.POST, entity, byte[].class);
+        log.debug("Completed getting text to speech");
+        return response.getBody();
     }
 
     public int creditsRemaining() {
@@ -62,7 +61,7 @@ public class ElevenLabsService implements TextToSpeechService, PersonaService {
         RestTemplate restTemplate = new RestTemplate();
         ResponseEntity<Map> response = restTemplate.exchange(tts_url + "/v1/user/subscription", HttpMethod.GET, entity, Map.class);
         Map vals = response.getBody();
-        int remaining = (Integer) vals.get("character_limit") - (Integer) vals.get("character_count");
+        int remaining = (Integer) Objects.requireNonNull(vals).get("character_limit") - (Integer) vals.get("character_count");
         log.debug("Credit information for TTS: {}", vals);
         return remaining;
     }
@@ -75,10 +74,8 @@ public class ElevenLabsService implements TextToSpeechService, PersonaService {
         headers.add("xi-api-key", tts_key);
         headers.set("Content-Type", "application/json");
 
-        // Create an HttpEntity object
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(headers);
 
-        // Make the API call
         RestTemplate restTemplate = new RestTemplate();
         ResponseEntity<Map> response = restTemplate.exchange(tts_url + "/v1/voices", HttpMethod.GET, entity, Map.class);
         List<Map<String, Object>> voices = (List) (response.getBody().get("voices"));
@@ -125,7 +122,6 @@ public class ElevenLabsService implements TextToSpeechService, PersonaService {
 
         HttpEntity<MultiValueMap<String, Object>> entity = new HttpEntity<>(body, headers);
 
-        // Make the API call
         RestTemplate restTemplate = new RestTemplate();
         ResponseEntity<Map> response = restTemplate.exchange(tts_url + "/v1/voices/add", HttpMethod.POST, entity, Map.class);
         log.debug("Response {}", response.getBody());

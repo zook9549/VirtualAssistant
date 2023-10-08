@@ -92,7 +92,7 @@ public class VirtualAssistantApplication {
     @RequestMapping(value = "/tts", produces = "audio/mpeg")
     public byte[] getTextToSpeech(@RequestParam(defaultValue = "evan") String person, @RequestParam String text) throws Exception {
         String key = (person + ":" + text).toLowerCase();
-        byte[] audio = (byte[]) cachedAudio.get(key);
+        byte[] audio = cachedAudio.get(key);
         if (audio == null) {
             Persona persona = availablePersonas.get(person.toLowerCase());
             audio = textToSpeechService.getTextToSpeech(persona, text);
@@ -103,7 +103,7 @@ public class VirtualAssistantApplication {
 
     public byte[] getVideo(Persona persona, String text, byte[] audio) throws Exception {
         String key = (persona.getName() + ":" + text).toLowerCase();
-        byte[] video = (byte[]) cachedVideo.get(key);
+        byte[] video = cachedVideo.get(key);
         if (video == null) {
             log.debug("Getting video for {}", key);
             String audioUrl = fileStore.save((key.hashCode() + ".mp3"), audio);
@@ -252,7 +252,7 @@ public class VirtualAssistantApplication {
         }
     }
 
-    private List<String> loadSmallTalkVideos(Persona persona) {
+    private void loadSmallTalkVideos(Persona persona) {
         persona.getSmallTalkVideos().clear();
         for (int i = 1; i <= smallTalkNumber; i++) {
             String fileName = persona.getName().toLowerCase() + "-smalltalk" + i + ".mp4";
@@ -260,10 +260,9 @@ public class VirtualAssistantApplication {
                 persona.getSmallTalkVideos().add(fileName);
             }
         }
-        return persona.getSmallTalkVideos();
     }
 
-    private List<String> loadStartingVideo(Persona persona) {
+    private void loadStartingVideo(Persona persona) {
         persona.getStartingVideos().clear();
         for (int i = 1; i <= startingNumber; i++) {
             String fileName = persona.getName().toLowerCase() + "-starting" + i + ".mp4";
@@ -271,10 +270,9 @@ public class VirtualAssistantApplication {
                 persona.getStartingVideos().add(fileStore.getUrl(fileName));
             }
         }
-        return persona.getSmallTalkVideos();
     }
 
-    private List<String> loadIntroVideos(Persona persona) {
+    private void loadIntroVideos(Persona persona) {
         persona.getIntroVideos().clear();
         for (int i = 1; i <= introNumber; i++) {
             String fileName = persona.getName().toLowerCase() + "-intro" + i + ".mp4";
@@ -282,17 +280,15 @@ public class VirtualAssistantApplication {
                 persona.getIntroVideos().add(fileStore.getUrl(fileName));
             }
         }
-        return persona.getSmallTalkVideos();
     }
 
-    private String loadIdleVideo(Persona persona) {
+    private void loadIdleVideo(Persona persona) {
         persona.setIdleVideoUrl(null);
         String idleVideoName = persona.getName().toLowerCase() + ".mp4";
         if (fileStore.exists(idleVideoName)) {
             persona.setIdleVideoUrl(fileStore.getUrl(idleVideoName));
             persona.setIdleVideoStatus("done");
         }
-        return persona.getIdleVideoUrl();
     }
 
     private boolean isPersonaAvailableToAnimate(Persona persona) {
@@ -318,8 +314,8 @@ public class VirtualAssistantApplication {
     private int introNumber;
 
 
-    private final LRUCache cachedAudio = new LRUCache<>(40);
-    private final LRUCache cachedVideo = new LRUCache<>(40);
+    private final LRUCache<String, byte[]> cachedAudio = new LRUCache<>(40);
+    private final LRUCache<String, byte[]> cachedVideo = new LRUCache<>(40);
     private final Map<String, String> cachedAnswers = new HashMap<>();
     private final Map<String, Integer> accessCounts = new HashMap<>();
     private final Map<String, Persona> availablePersonas = new TreeMap<>();
