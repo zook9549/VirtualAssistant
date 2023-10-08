@@ -4,6 +4,7 @@ import ai.asktheexpert.virtualassistant.models.Persona;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -19,6 +20,7 @@ import java.util.Map;
 @Service
 public class ChatGPTService implements AnswerService {
 
+    @Cacheable(value = "chat", key = "#persona.name + #persona.currentMood + #question")
     public String answer(String question, Persona persona) {
         log.debug("Asking {}", question);
 

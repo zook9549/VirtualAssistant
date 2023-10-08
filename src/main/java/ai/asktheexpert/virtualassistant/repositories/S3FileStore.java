@@ -9,6 +9,7 @@ import org.apache.commons.io.FilenameUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayInputStream;
@@ -25,6 +26,8 @@ public class S3FileStore implements FileStore {
         this.amazonS3 = amazonS3;
     }
 
+
+    @Cacheable(value = "s3")
     public String save(String name, byte[] contents) throws IOException {
         if (!exists(name)) {
             log.info("Uploading new file: {}", name);
@@ -55,10 +58,10 @@ public class S3FileStore implements FileStore {
     @Override
     public String getUrl(String name) {
         if (exists(name)) {
-            log.info("Fetching file: {}", name);
+            log.info("Fetching file path: {}", name);
             return ((AmazonS3Client) amazonS3).getResourceUrl(bucket, name);
         } else {
-            log.info("No external file {}", name);
+            log.info("No external file path found: {}", name);
             return null;
         }
     }
