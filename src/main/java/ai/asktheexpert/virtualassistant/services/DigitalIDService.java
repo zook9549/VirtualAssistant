@@ -27,7 +27,7 @@ public class DigitalIDService implements AvatarService, CreditService {
         this.objectMapper = objectMapper;
     }
 
-    @Cacheable(value = "video", key = "#audioUrl")
+    @Cacheable(value = "video", key = "#audioUrl.path")
     public byte[] getVideo(Persona persona, URL audioUrl) throws Exception {
         Map<String, Object> script = new HashMap<>();
         script.put("type", "audio");
