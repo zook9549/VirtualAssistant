@@ -82,15 +82,6 @@ public class VirtualAssistantApplication {
         return textToSpeechService.getTextToSpeech(persona, text);
     }
 
-    public byte[] getVideo(Persona persona, String text, byte[] audio) throws Exception {
-        String key = (persona.getName() + ":" + text).toLowerCase();
-        String audioUrl = fileStore.save((persona.getName().toLowerCase() + "-" + key.hashCode() + ".mp3"), audio);
-        URL url = new URL(audioUrl);
-        byte[] video = avatarService.getVideo(persona, url);
-        log.debug("Done getting video for {}", key);
-        return video;
-    }
-
     @RequestMapping(value = "/generateIdleVideo")
     public String createIdleVideo(String person, boolean forceRefresh) {
         Persona persona = availablePersonas.get(person.toLowerCase());
@@ -161,6 +152,15 @@ public class VirtualAssistantApplication {
                 log.trace("Persona can't be animated because the profile image doesn't exist: {}", persona);
             }
         }
+    }
+
+    private byte[] getVideo(Persona persona, String text, byte[] audio) throws Exception {
+        String key = (persona.getName() + ":" + text).toLowerCase();
+        String audioUrl = fileStore.save((persona.getName().toLowerCase() + "-" + key.hashCode() + ".mp3"), audio);
+        URL url = new URL(audioUrl);
+        byte[] video = avatarService.getVideo(persona, url);
+        log.debug("Done getting video for {}", key);
+        return video;
     }
 
     private void createIdleVideo(Persona persona) {
