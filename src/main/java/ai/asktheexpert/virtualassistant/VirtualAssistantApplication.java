@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -58,17 +59,17 @@ public class VirtualAssistantApplication {
 
         log.debug("Getting answer for {}", persona);
         String answer = getHumanizedAnswerAsText(question, persona, ignoreCache);
-        byte[] audio = getTextToSpeech(person, answer);
 
         AssistantResponse response = new AssistantResponse();
         response.setPerson(person);
         response.setMood(mood);
         response.setOriginalQuestion(question);
         response.setResponse(answer);
-        response.setAudio(audio);
+
+        String audioUrl = getTextToSpeech(person, answer);
+        response.setAudioUrl(audioUrl);
         try {
-            byte[] video = getVideo(persona, answer, audio);
-            response.setVideo(video);
+            response.setVideoUrl(getVideo(persona, answer, audioUrl));
         } catch (Exception ex) {
             log.error("Failed to generate video", ex);
         }
@@ -77,9 +78,27 @@ public class VirtualAssistantApplication {
     }
 
     @RequestMapping(value = "/tts", produces = "audio/mpeg")
-    public byte[] getTextToSpeech(@RequestParam(defaultValue = "evan") String person, @RequestParam String text) throws Exception {
+    public String getTextToSpeech(@RequestParam(defaultValue = "evan") String person, @RequestParam String text) throws Exception {
         Persona persona = availablePersonas.get(person.toLowerCase());
-        return textToSpeechService.getTextToSpeech(persona, text);
+        String fileName = getUniqueId(persona, text) + ".mp3";
+        String url = fileStore.getUrl(fileName);
+        if (url == null) {
+            byte[] audio = textToSpeechService.getTextToSpeech(persona, text);
+            url = fileStore.cache(fileName, audio);
+        }
+        log.debug("Done getting audio for {}", fileName);
+        return url;
+    }
+
+    private String getVideo(Persona persona, String text, String audioUrl) throws Exception {
+        String fileName = getUniqueId(persona, text) + ".mp4";
+        String url = fileStore.getUrl(fileName);
+        if (url == null) {
+            byte[] video = avatarService.getVideo(persona,  new URL(audioUrl));
+            url = fileStore.cache(fileName, video);
+        }
+        log.debug("Done getting video for {}", fileName);
+        return url;
     }
 
     @RequestMapping(value = "/generateIdleVideo")
@@ -152,15 +171,6 @@ public class VirtualAssistantApplication {
                 log.trace("Persona can't be animated because the profile image doesn't exist: {}", persona);
             }
         }
-    }
-
-    private byte[] getVideo(Persona persona, String text, byte[] audio) throws Exception {
-        String key = (persona.getName() + ":" + text).toLowerCase();
-        String audioUrl = fileStore.save((persona.getName().toLowerCase() + "-" + key.hashCode() + ".mp3"), audio);
-        URL url = new URL(audioUrl);
-        byte[] video = avatarService.getVideo(persona, url);
-        log.debug("Done getting video for {}", key);
-        return video;
     }
 
     private void createIdleVideo(Persona persona) {
@@ -278,6 +288,10 @@ public class VirtualAssistantApplication {
 
     private boolean isPersonaAvailableToAnimate(Persona persona) {
         return fileStore.exists(persona.getAvatarId());
+    }
+
+    private String getUniqueId(Persona persona, Object... fields) {
+        return persona.getName().toLowerCase() + "-" + Objects.hash(fields);
     }
 
     @PostConstruct

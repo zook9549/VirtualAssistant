@@ -2,9 +2,7 @@ package ai.asktheexpert.virtualassistant.repositories;
 
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;
-import com.amazonaws.services.s3.model.ObjectMetadata;
-import com.amazonaws.services.s3.model.PutObjectRequest;
-import com.amazonaws.services.s3.model.S3Object;
+import com.amazonaws.services.s3.model.*;
 import org.apache.commons.io.FilenameUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,6 +14,8 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -26,6 +26,18 @@ public class S3FileStore implements FileStore {
         this.amazonS3 = amazonS3;
     }
 
+
+    @Cacheable(value = "s3")
+    public String cache(String name, byte[] contents) throws IOException {
+        String path = save(name, contents);
+        List<Tag> tags = List.of(new Tag("TempDate", String.valueOf(System.currentTimeMillis())));
+        amazonS3.setObjectTagging(new SetObjectTaggingRequest(
+                bucket,
+                name,
+                new ObjectTagging(tags)
+        ));
+        return path;
+    }
 
     @Cacheable(value = "s3")
     public String save(String name, byte[] contents) throws IOException {

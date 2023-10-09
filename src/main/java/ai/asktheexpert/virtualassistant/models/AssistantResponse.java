@@ -13,6 +13,8 @@ public class AssistantResponse {
     private String originalQuestion;
     private String humanizedQuestion;
     private String response;
+    private String audioUrl;
+    private String videoUrl;
     @EqualsAndHashCode.Exclude
     @ToString.Exclude
     private byte[] audio;

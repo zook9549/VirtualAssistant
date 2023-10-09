@@ -9,6 +9,8 @@ import java.net.URLConnection;
 import java.util.Map;
 
 public interface FileStore {
+    String cache(String name, byte[] contents) throws IOException;
+
     String save(String name, byte[] contents) throws IOException;
 
     byte[] get(String name) throws IOException;

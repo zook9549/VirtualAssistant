@@ -237,9 +237,15 @@
                 if (data.audio != null) {
                     base64String = "data:audio/mp3;base64," + data.audio;
                     playAudio();
+                } else if(data.audioUrl != null) {
+                    base64String = data.audioUrl;
+                    playAudio();
                 }
                 if (data.video != null) {
                     let videoString = "data:video/mp4;base64," + data.video;
+                    playVideo(videoString);
+                }else if (data.videoUrl != null) {
+                    let videoString = data.videoUrl;
                     playVideo(videoString);
                 }
                 console.log("Parsed response for audio and video");
@@ -314,6 +320,7 @@
         function downloadVideo() {
             const a = document.createElement('a');
             a.href = document.getElementById("talk-video2").src;
+            a.target = '_blank';
             a.download = document.getElementById('person').value + ".mp4";
             document.body.appendChild(a);
             a.click();
