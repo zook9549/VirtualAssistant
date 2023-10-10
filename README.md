@@ -1,42 +1,82 @@
-# Virtual Assistant
-This project was built to test out the different technologies emerging that allow deep-faked virtual assistants. It wasn't built for performance nor as an actual virtual assistant that could be used for production purposes.  The performance is too slow, and it wasn't built with WebRTC or streaming in mind.  On average, it takes 3-4 seconds for a final generated video to display.  That's an eternity if you were to try to engage in a conversation.  As new services emerge and those used here improve, that might become more realistic.  Feel free to submit pull requests for new providers.
+# Virtual Assistant Project
 
-Before creating a new persona, you should ensure you have consent from any real people being deep-faked.
+This project explores the capabilities of emerging deep-fake virtual assistant technologies. Although it serves as a testing ground for these technologies, it is not optimized for high performance nor intended for production use.
 
-## Setup
-You'll need a few accounts setup to make this work and then access tokens added into the config.  Configuration should be added to a profile specific application.properties.  This is easiest done by creating application-default.properties and overriding the properties needed.
+- Performance Insight: Current performance metrics show a 3-4 second delay for the final video display, which is suboptimal for real-time conversations. However, improvements are anticipated as the incorporated technologies evolve.
 
-### AWS
-Profile pictures, audio files, and persona videos are all stored in an S3 bucket.  You'll need an AWS account with a public S3 bucket configured.  Additionally, you'll need to setup a service account in AWS to have access to the bucket.
-#### Configuration
-1. aws.clientId=_client id for the service account created in AWS_
-2. aws.authKey=_authorization key for the service account created in AWS_
-3. aws.s3.bucket=_the name of the public bucket your created_
+- WebRTC & Streaming: The current build does not integrate WebRTC or streaming.
 
-### Eleven Labs
-Eleven Labs is used for creating the voice model.  It's easy to train, with 30-60 seconds usually creating a fairly high-quality representation of the personas voice.  Setup an account at https://elevenlabs.io/ and get your API keys.
-#### Configuration
-1. tts_key=_the API key obtained from Eleven Labs_
+- Contribution: Community contributions are welcome! Please feel free to submit pull requests, especially for new providers.
 
-### ChatGPT
-ChatGPT drives the conversation between the questions and the answers.  This is meant to be brief, but you can modify the prompts in the configuration to drive more thorough and robust answers.
-#### Configuration
-1. chatgpt.api.key=_api key for ChatGPT to the conversational chat API_
+> Important: Before creating a new persona, always obtain consent if real individuals are being represented.
 
-### D-ID
-D-ID is what animates a profile picture with the audio to create animated avatar.  This is an area where I expect to see much better and cheaper alternatives to start emerging.  The requirements here are:
-1. A decent API
-2. Ability to use a human-based avatar based on a profile picture. 
-3. Ability to provide audio directly for the voice OR ability to specify a trained voice model.
+---
 
-All other offerings I've found don't do a good job of supporting #2 and #3 together.
+## Setup & Configuration
 
-#### Configuration
-1. did.key=_api key provided through D-ID_
+To initiate the virtual assistant, configure certain accounts and ensure the correct tokens are in place. Ideally, configurations should be added to a profile-specific `application.properties`, which can be easily managed through `application-default.properties`.
 
-## Usage
-### Setting Up Personas
-Personas are setup using ./profiles.html.  Instructions are on the page to setup the voice model and avatar.  The description you choose for the person drive the prompt engineering behind the answers.
+### 1. AWS (Amazon Web Services)
 
-## Technical Details
-The application is built upon Spring Boot, which gives an all-in-one platform running on Tomcat as a webserver.  This isn't intended to scale out, but this can easily be ported over to containers like K8/Docker.
+- Purpose: AWS's S3 bucket houses profile images, audio recordings, and persona videos.
+
+- Requirements:
+
+An AWS account with a configured public S3 bucket.
+A service account in AWS with bucket access.
+Configuration Keys:
+```markdown
+aws.clientId=YOUR_AWS_CLIENT_ID
+aws.authKey=YOUR_AWS_AUTH_KEY
+aws.s3.bucket=YOUR_S3_BUCKET_NAME
+```
+
+### 2. Eleven Labs
+
+- Purpose: For voice model generation, with a short training time of 30-60 seconds.
+
+- SignUp: Register at Eleven Labs to obtain API keys.
+
+Configuration Key:
+```markdown
+tts_key=YOUR_ELEVEN_LABS_API_KEY
+```
+
+### 3. ChatGPT
+
+- Purpose: Drives the dialogue dynamics between user queries and responses.
+
+Configuration Key:
+```markdown
+chatgpt.api.key=YOUR_CHATGPT_API_KEY
+```
+
+### 4. D-ID
+
+- Purpose: Animates avatars synchronized with audio.
+
+- Requirements:
+
+Reliable API.
+Support for human-like avatars from images.
+Direct audio provision or the ability to use trained voice models.
+> Note: Many available solutions lack robust support for requirements 2 and 3.
+
+Configuration Key:
+```markdown
+did.key=YOUR_DID_API_KEY
+```
+
+---
+
+## Usage Guide
+
+### Persona Creation
+
+Use the `./profiles.html` for persona setup. The provided on-page instructions will guide you through voice model and avatar configurations. The chosen persona description influences the response dynamics of the assistant.
+
+---
+
+## Technical Aspects
+
+Built on Spring Boot, this application offers a comprehensive platform that runs on Tomcat. While it's not designed for extensive scalability, it's compatible with container solutions like Kubernetes (K8) or Docker.
