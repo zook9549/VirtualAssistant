@@ -115,8 +115,8 @@
         }
 
         .textarea-container {
-             position: relative;
-         }
+            position: relative;
+        }
 
         #question {
             position: relative;
@@ -128,8 +128,8 @@
             top: 5px;
             cursor: pointer;
             font-size: 36px;
-            background-color: #f3f3f3;  /* Light background for visibility */
-            border-radius: 50%;         /* Makes it circular */
+            background-color: #f3f3f3; /* Light background for visibility */
+            border-radius: 50%; /* Makes it circular */
             padding: 2px 5px;
         }
     </style>
@@ -145,12 +145,7 @@
         let idleVideo = new Map();
         let fetchingAnswer = false;
 
-        window.onload = function () {
-            document.getElementById('talk-video').addEventListener('ended', playIdleVideo, false);
-            document.getElementById('talk-video2').addEventListener('ended', transitionVideo, false);
-            document.getElementById('talk-video2').addEventListener('error', playIdleVideo, false);
-            document.getElementById('person').addEventListener('change', introPersona, false);
-
+        document.addEventListener("DOMContentLoaded", function () {
             fetch(`./listPersonas`, {
                 method: 'GET',
                 headers: {
@@ -168,7 +163,11 @@
             })
                 .then(response => response.json())
                 .then(data => setMoods(data));
-        }
+
+            document.getElementById('talk-video2').addEventListener('ended', transitionVideo, false);
+            document.getElementById('talk-video2').addEventListener('error', playIdleVideo, false);
+            document.getElementById('person').addEventListener('change', introPersona, false);
+        });
 
         function introPersona() {
             let name = document.getElementById('person').value;
@@ -187,13 +186,18 @@
 
         function playIdleVideo() {
             console.log("Playing idle video");
-            let talkVideo = document.getElementById('talk-video');
-            talkVideo.src = idleVideo.get(document.getElementById('person').value);
+            let person = document.getElementById('person').value;
+            let talkVideo = document.getElementById(person + "-video");
+
+            talkVideo.style.display = "inline-flex";
+            hideVideo(talkVideo);
+            talkVideo.src = idleVideo.get(person);
             talkVideo.load();
             talkVideo.loop = true;
         }
 
         function transitionVideo() {
+            let person = document.getElementById('person').value;
             let video2 = document.getElementById('talk-video2');
             if (queuedVideo != null && video2.src != queuedVideo) {
                 console.log("Playing queued up video: " + queuedVideo)
@@ -201,7 +205,7 @@
             } else {
                 console.log("Transitioning to idle video");
                 document.getElementById('talk-video2').pause();
-                document.getElementById('talk-video').style.display = "inline-flex";
+                document.getElementById(person + "-video").style.display = "inline-flex";
                 document.getElementById('talk-video2').style.display = "none";
                 playIdleVideo();
                 queuedVideo = null;
@@ -237,14 +241,14 @@
                 if (data.audio != null) {
                     base64String = "data:audio/mp3;base64," + data.audio;
                     playAudio();
-                } else if(data.audioUrl != null) {
+                } else if (data.audioUrl != null) {
                     base64String = data.audioUrl;
                     playAudio();
                 }
                 if (data.video != null) {
                     let videoString = "data:video/mp4;base64," + data.video;
                     playVideo(videoString);
-                }else if (data.videoUrl != null) {
+                } else if (data.videoUrl != null) {
                     let videoString = data.videoUrl;
                     playVideo(videoString);
                 }
@@ -265,8 +269,10 @@
         }
 
         function playVideo(src) {
-            let idleElement = document.getElementById('talk-video');
+            let person = document.getElementById('person').value;
+            let idleElement = document.getElementById(person + '-video');
             let videoElement = document.getElementById('talk-video2');
+
             if (videoElement.src != "" || src != null) {
                 idleElement.style.display = "none";
                 videoElement.style.display = "inline-flex";
@@ -303,6 +309,7 @@
                 introVideos.set(data[i].name.toLowerCase(), shuffle(data[i].introVideos));
                 introduced.set(data[i].name.toLowerCase(), false);
                 idleVideo.set(data[i].name.toLowerCase(), data[i].idleVideoUrl);
+                loadVideo(data[i].name.toLowerCase());
             }
             playIdleVideo();
         }
@@ -342,15 +349,47 @@
             }
             return array;
         }
+
+        function loadVideo(person) {
+            // Create a video element
+            const video = document.createElement('video');
+            video.id = person + "-video";
+            video.autoplay = true;
+            video.muted = true;
+            video.playsInline = true;
+            video.style.display = "none";
+            video.addEventListener('ended', playIdleVideo, false);
+            video.addEventListener('click', function () {
+                playVideo();
+            });
+
+
+            const source = document.createElement('source');
+            source.src = idleVideo.get(person);
+            video.src = idleVideo.get(person);
+            source.type = 'video/mp4';
+
+
+            video.appendChild(source);
+
+            const container = document.getElementById('video-container');
+            container.appendChild(video);
+        }
+
+        function hideVideo(excluded) {
+            const videos = document.querySelectorAll('video');
+            videos.forEach((video) => {
+                if(excluded == null || video.id !== excluded.id) {
+                    video.style.display = 'none';
+                }
+            });
+        }
     </script>
 </head>
 <body>
 <div id="content">
     <div id="video-wrapper">
-        <div>
-            <video id="talk-video" autoplay muted loop playsinline onclick="playVideo()">
-                <source id="talk-video-src" src="" type="video/mp4">
-            </video>
+        <div id="video-container">
             <video id="talk-video2" autoplay loop playsinline
                    onclick="transitionVideo()">
                 <source src="" type="video/mp4">
