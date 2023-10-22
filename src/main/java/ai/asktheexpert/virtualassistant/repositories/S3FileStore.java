@@ -7,6 +7,7 @@ import org.apache.commons.io.FilenameUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
@@ -14,9 +15,9 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 @Service
@@ -28,70 +29,107 @@ public class S3FileStore implements FileStore {
 
 
     @Cacheable(value = "s3")
-    public String cache(String name, byte[] contents) throws IOException {
-        String path = save(name, contents);
+    public String cache(byte[] contents, String name, MediaType mediaType, Object... params) throws IOException {
+        String fileName = getFileName(name, mediaType, params);
+        String path = save(contents, fileName);
         List<Tag> tags = List.of(new Tag("TempDate", String.valueOf(System.currentTimeMillis())));
         amazonS3.setObjectTagging(new SetObjectTaggingRequest(
                 bucket,
-                name,
+                fileName,
                 new ObjectTagging(tags)
         ));
         return path;
     }
 
+
     @Cacheable(value = "s3")
-    public String save(String name, byte[] contents) throws IOException {
-        if (!exists(name)) {
-            log.info("Uploading new file: {}", name);
+    public String save(byte[] contents, String name, MediaType mediaType, Object... params) throws IOException {
+        String fileName = getFileName(name, mediaType, params);
+        return save(contents, fileName);
+    }
+
+    private String save(byte[] contents, String fileName) throws IOException {
+        if (!exists(fileName)) {
+            log.info("Uploading new file: {}", fileName);
         } else {
-            log.info("Updating an existing file {}", name);
+            log.info("Updating an existing file {}", fileName);
         }
         try (InputStream is = new ByteArrayInputStream(contents);) {
             ObjectMetadata metaData = new ObjectMetadata();
             metaData.setContentLength(contents.length);
-            metaData.setContentType(getMimeTypeFromExtension(name));
-            PutObjectRequest objectRequest = new PutObjectRequest(bucket, name, is, metaData);
+            metaData.setContentType(getMimeTypeFromExtension(fileName));
+            PutObjectRequest objectRequest = new PutObjectRequest(bucket, fileName, is, metaData);
             amazonS3.putObject(objectRequest);
-            return ((AmazonS3Client) amazonS3).getResourceUrl(bucket, name);
+            return ((AmazonS3Client) amazonS3).getResourceUrl(bucket, fileName);
         }
     }
 
-    public byte[] get(String name) throws IOException {
+    @Cacheable(value = "s3")
+    public byte[] get(String name, MediaType mediaType, Object... params) throws IOException {
+        String fileName = getFileName(name, mediaType, params);
         if (exists(name)) {
-            log.info("Fetching file: {}", name);
-            S3Object result = amazonS3.getObject(bucket, name);
+            log.info("Fetching file: {}", fileName);
+            S3Object result = amazonS3.getObject(bucket, fileName);
             return toByteArray(result.getObjectContent());
         } else {
-            log.info("Updating an existing file {}", name);
+            log.info("File does not exist: {}", fileName);
             return null;
         }
     }
 
     @Override
-    public String getUrl(String name) {
-        if (exists(name)) {
-            log.info("Fetching file path: {}", name);
-            return ((AmazonS3Client) amazonS3).getResourceUrl(bucket, name);
+    public String getUrl(String name, MediaType mediaType, Object... params) {
+        String fileName = getFileName(name, mediaType, params);
+        if (exists(fileName)) {
+            log.info("Fetching file path: {}", fileName);
+            return ((AmazonS3Client) amazonS3).getResourceUrl(bucket, fileName);
         } else {
-            log.info("No external file path found: {}", name);
+            log.info("No external file path found: {}", fileName);
             return null;
         }
     }
 
     @Override
-    public boolean delete(String name) {
-        if (exists(name)) {
-            log.info("Deleting  file: {}", name);
-            amazonS3.deleteObject(bucket, name);
+    @CacheEvict(value = "s3")
+    public boolean delete(String name, MediaType mediaType, Object... params) {
+        String fileName = getFileName(name, mediaType, params);
+        if (exists(fileName)) {
+            log.info("Deleting  file: {}", fileName);
+            amazonS3.deleteObject(bucket, fileName);
             return true;
         } else {
-            log.info("Skipping delete since file doesn't exist: {}", name);
+            log.info("Skipping delete since file doesn't exist: {}", fileName);
             return false;
         }
     }
 
-    public boolean exists(String name) {
+    public boolean exists(String name, MediaType mediaType, Object... params) {
+        return amazonS3.doesObjectExist(bucket, getFileName(name, mediaType, params));
+    }
+
+    private boolean exists(String name) {
         return amazonS3.doesObjectExist(bucket, name);
+    }
+
+
+    private String getFileName(String name, MediaType mediaType, Object... params) {
+        StringBuilder result = new StringBuilder();
+        if (name != null && !name.isEmpty()) {
+            result.append(name.toLowerCase().replace(' ', '_'));
+        }
+        if (params != null && params.length > 0) {
+            Object[] lowercaseStrings = new Object[params.length];
+            for (int i = 0; i < params.length; i++) {
+                lowercaseStrings[i] = params[i].toString().toLowerCase();
+
+            }
+            if (!result.isEmpty()) {
+                result.append('-');
+            }
+            result.append(Objects.hash(lowercaseStrings));
+        }
+        result.append('.').append(mediaType.getExtension());
+        return result.toString();
     }
 
     private String getMimeTypeFromExtension(String name) {

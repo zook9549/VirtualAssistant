@@ -28,7 +28,6 @@ public class ChatGPTService implements AnswerService {
         headers.set("Authorization", "Bearer " + chatgptApiKey);
         headers.set("Content-Type", "application/json");
 
-        // Create a conversation payload
         List<Map<String, String>> conversation = new ArrayList<>();
         Map<String, String> systemMessage = new HashMap<>();
         systemMessage.put("role", "system");

@@ -9,23 +9,48 @@ import java.net.URLConnection;
 import java.util.Map;
 
 public interface FileStore {
-    String cache(String name, byte[] contents) throws IOException;
+    String cache(byte[] contents, String name, MediaType mediaType, Object... params) throws IOException;
 
-    String save(String name, byte[] contents) throws IOException;
+    String save(byte[] contents, String name, MediaType mediaType, Object... params) throws IOException;
 
-    byte[] get(String name) throws IOException;
+    byte[] get(String name, MediaType mediaType, Object... params) throws IOException;
 
-    String getUrl(String name);
+    String getUrl(String name, MediaType mediaType, Object... params);
 
-    boolean delete(String name);
+    boolean delete(String name, MediaType mediaType, Object... params);
 
-    boolean exists(String name);
+    boolean exists(String name, MediaType mediaType, Object... params);
 
     public static final Map<String, String> MIME_TYPE_MAP = Map.of(
             "image/jpeg", "jpg",
             "video/mp4", "mp4",
             "audio/mpeg", "mp3"
     );
+
+    public enum MediaType {
+        MP4("mp4", "video/mp4"), MP3("mp3", "audio/mpeg"), JPG("jpg","image/jpeg");
+
+        private final String value;
+        private final String extension;
+
+        MediaType(String extension, String value) {
+            this.extension = extension;
+            this.value = value;
+        }
+
+        public String getValue() {
+            return value;
+        }
+
+        public String getExtension() {
+            return extension;
+        }
+
+        @Override
+        public String toString() {
+            return value;
+        }
+    }
 
     public static byte[] downloadFileBytes(URL url) throws IOException {
         URLConnection connection = url.openConnection();

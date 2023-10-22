@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.CacheConfig;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -21,6 +22,7 @@ import java.util.Map;
 import java.util.Objects;
 
 @Service
+// @CacheConfig(cacheManager = "fileStoreCacheManager")
 public class DigitalIDService implements AvatarService, CreditService {
     public DigitalIDService(FileStore fileStore, ObjectMapper objectMapper) {
         this.fileStore = fileStore;
@@ -45,7 +47,7 @@ public class DigitalIDService implements AvatarService, CreditService {
 
     private byte[] getVideo(Persona persona, Map<String, Object> audioHeader) throws Exception {
         byte[] video;
-        String imgUrl = fileStore.getUrl(persona.getName().toLowerCase() + ".jpg");
+        String imgUrl = fileStore.getUrl(persona.getName().toLowerCase(), FileStore.MediaType.JPG);
 
         Map<String, Object> config = new HashMap<>();
         config.put("fluent", "false");
@@ -62,8 +64,8 @@ public class DigitalIDService implements AvatarService, CreditService {
         RestTemplate restTemplate = new RestTemplate();
         ResponseEntity<Map> response = restTemplate.exchange(didUrl + "/talks", HttpMethod.POST, entity, Map.class);
         String id = Objects.requireNonNull(response.getBody()).get("id").toString();
-        log.debug("Generated video {}", id);
-        int maxTime = 20000;
+        log.debug("Generated video request {}", id);
+        int maxTime = 60000;
         int totalTime = 0;
         int waitTime = 1000;
         do {
@@ -71,6 +73,9 @@ public class DigitalIDService implements AvatarService, CreditService {
             video = fetchVideo(id);
             totalTime += waitTime;
         } while (video == null && totalTime < maxTime);
+        if (video == null) {
+            throw new Exception("Unable to get video for " + id);
+        }
         return video;
     }
 

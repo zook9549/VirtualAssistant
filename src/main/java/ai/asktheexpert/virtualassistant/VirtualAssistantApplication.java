@@ -12,7 +12,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -44,7 +43,7 @@ public class VirtualAssistantApplication {
     }
 
     @RequestMapping(value = "/askText")
-    public String getHumanizedAnswerAsText(String question, @RequestParam(required = false) Persona persona, @RequestParam(required = false, defaultValue = "false") boolean ignoreCache) {
+    public String getHumanizedAnswerAsText(String question, @RequestParam(required = false) Persona persona) {
         if (persona == null) {
             persona = availablePersonas.values().iterator().next();
             persona.setCurrentMood(Moods.getRandomMood());
@@ -53,12 +52,12 @@ public class VirtualAssistantApplication {
     }
 
     @RequestMapping(value = "/askWithDetails")
-    public AssistantResponse getAnswer(String question, @RequestParam(defaultValue = "evan") String person, @RequestParam(required = false) Moods mood, @RequestParam(required = false, defaultValue = "false") boolean ignoreCache) throws Exception {
+    public AssistantResponse getAnswer(String question, @RequestParam(defaultValue = "evan") String person, @RequestParam(required = false) Moods mood) throws Exception {
         Persona persona = availablePersonas.get(person.toLowerCase());
         persona.setCurrentMood(mood);
 
         log.debug("Getting answer for {}", persona);
-        String answer = getHumanizedAnswerAsText(question, persona, ignoreCache);
+        String answer = getHumanizedAnswerAsText(question, persona);
 
         AssistantResponse response = new AssistantResponse();
         response.setPerson(person);
@@ -69,7 +68,9 @@ public class VirtualAssistantApplication {
         String audioUrl = getTextToSpeech(person, answer);
         response.setAudioUrl(audioUrl);
         try {
-            response.setVideoUrl(getVideo(persona, answer, audioUrl));
+            getVideo(persona, answer, audioUrl);
+            String videoUrl = fileStore.getUrl(persona.getName(), FileStore.MediaType.MP4, answer);
+            response.setVideoUrl(videoUrl);
         } catch (Exception ex) {
             log.error("Failed to generate video", ex);
         }
@@ -80,25 +81,26 @@ public class VirtualAssistantApplication {
     @RequestMapping(value = "/tts", produces = "audio/mpeg")
     public String getTextToSpeech(@RequestParam(defaultValue = "evan") String person, @RequestParam String text) throws Exception {
         Persona persona = availablePersonas.get(person.toLowerCase());
-        String fileName = getUniqueId(persona, text) + ".mp3";
-        String url = fileStore.getUrl(fileName);
+        String url = fileStore.getUrl(persona.getName(), FileStore.MediaType.MP3, text);
         if (url == null) {
             byte[] audio = textToSpeechService.getTextToSpeech(persona, text);
-            url = fileStore.cache(fileName, audio);
+            url = fileStore.cache(audio, persona.getName(), FileStore.MediaType.MP3, text);
         }
-        log.debug("Done getting audio for {}", fileName);
+        log.debug("Done getting audio for {}", url);
         return url;
     }
 
-    private String getVideo(Persona persona, String text, String audioUrl) throws Exception {
-        String fileName = getUniqueId(persona, text) + ".mp4";
-        String url = fileStore.getUrl(fileName);
-        if (url == null) {
-            byte[] video = avatarService.getVideo(persona,  new URL(audioUrl));
-            url = fileStore.cache(fileName, video);
+    private byte[] getVideo(Persona persona, String answer, String audioUrl) throws Exception {
+        if (!fileStore.exists(persona.getName(), FileStore.MediaType.MP4, answer)) {
+            log.debug("Generating new video for {}", persona.getName());
+            byte[] video = avatarService.getVideo(persona, new URL(audioUrl));
+            fileStore.save(video, persona.getName(), FileStore.MediaType.MP4, answer);
+            return video;
+        } else {
+            byte[] video = fileStore.get(persona.getName(), FileStore.MediaType.MP4, answer);
+            log.debug("Done getting existing video for {}", persona.getName());
+            return video;
         }
-        log.debug("Done getting video for {}", fileName);
-        return url;
     }
 
     @RequestMapping(value = "/generateIdleVideo")
@@ -178,13 +180,12 @@ public class VirtualAssistantApplication {
             if (persona.getIdleVideoUrl() == null) {
                 String idleVideoUrl = null;
                 String person = persona.getName().toLowerCase();
-                String videoPath = person.toLowerCase() + ".mp4";
-                if (!fileStore.exists(videoPath)) {
+                if (!fileStore.exists(persona.getName(), FileStore.MediaType.MP4)) {
                     log.debug("Creating idle video for {}", person);
                     byte[] video = avatarService.getVideo(persona, "<break time=\"20000ms\"/>");
-                    idleVideoUrl = fileStore.save(videoPath, video);
+                    idleVideoUrl = fileStore.save(video, persona.getName(), FileStore.MediaType.MP4);
                 } else if (persona.getIdleVideoUrl() == null) {
-                    idleVideoUrl = fileStore.getUrl(videoPath);
+                    idleVideoUrl = fileStore.getUrl(persona.getName(), FileStore.MediaType.MP4);
                 }
                 persona.setIdleVideoUrl(idleVideoUrl);
             }
@@ -194,17 +195,25 @@ public class VirtualAssistantApplication {
         }
     }
 
+    private byte[] getVideo(String prompt, Moods[] moods, Persona persona) throws Exception {
+        persona.setCurrentMood(Moods.getRandomMood(moods));
+        String answer = getHumanizedAnswerAsText(prompt, persona);
+        String audioUrl = getTextToSpeech(persona.getName(), answer);
+        return getVideo(persona, answer, audioUrl);
+    }
+
     private void createStartingVideos(Persona persona) {
         List<String> startingVideos = persona.getStartingVideos();
         for (int i = startingVideos.size() + 1; i <= startingNumber; i++) {
             try {
-                String fileName = persona.getName().toLowerCase() + "-starting" + i + ".mp4";
-                if (startingVideos.stream().noneMatch(s -> s.endsWith(fileName))) {
+                String suffix = "-starting" + i;
+                if (startingVideos.stream().noneMatch(s -> s.contains(suffix))) {
+                    String fileName = persona.getName().toLowerCase() + suffix;
                     log.debug("Creating starting talk {}", fileName);
-                    Moods[] moods = {Moods.Anticipation, Moods.Sarcastic, Moods.Love, Moods.Pride, Moods.Enthusiasm};
-                    AssistantResponse assistantResponse = getAnswer(startingPrompt, persona.getName(), Moods.getRandomMood(moods), true);
-                    fileStore.save(fileName, assistantResponse.getVideo());
-                    startingVideos.add(fileStore.getUrl(fileName));
+                    Moods[] moods = {Moods.Anticipation, Moods.Sarcastic, Moods.Enthusiasm};
+                    byte[] video = getVideo(startingPrompt, moods, persona);
+                    fileStore.save(video, fileName, FileStore.MediaType.MP4);
+                    startingVideos.add(fileStore.getUrl(fileName, FileStore.MediaType.MP4));
                 }
             } catch (Exception ex) {
                 log.warn("Unable to generate starting talk for {}", persona, ex);
@@ -216,12 +225,13 @@ public class VirtualAssistantApplication {
         List<String> smallTalkVideos = persona.getSmallTalkVideos();
         for (int i = smallTalkVideos.size() + 1; i <= smallTalkNumber; i++) {
             try {
-                String fileName = persona.getName().toLowerCase() + "-smalltalk" + i + ".mp4";
-                if (smallTalkVideos.stream().noneMatch(s -> s.endsWith(fileName))) {
+                String suffix = "-smalltalk" + i;
+                if (smallTalkVideos.stream().noneMatch(s -> s.contains(suffix))) {
+                    String fileName = persona.getName().toLowerCase() + suffix;
                     log.debug("Creating small talk {}", fileName);
-                    AssistantResponse assistantResponse = getAnswer(smallTalkPrompt, persona.getName(), Moods.Enthusiasm, true);
-                    fileStore.save(fileName, assistantResponse.getVideo());
-                    smallTalkVideos.add(fileStore.getUrl(fileName));
+                    byte[] video = getVideo(smallTalkPrompt, new Moods[]{Moods.Enthusiasm}, persona);
+                    fileStore.save(video, fileName, FileStore.MediaType.MP4);
+                    smallTalkVideos.add(fileStore.getUrl(fileName, FileStore.MediaType.MP4));
                 }
             } catch (Exception ex) {
                 log.warn("Unable to generate small talk for {}", persona, ex);
@@ -233,13 +243,14 @@ public class VirtualAssistantApplication {
         List<String> introVideos = persona.getIntroVideos();
         for (int i = introVideos.size() + 1; i <= introNumber; i++) {
             try {
-                String fileName = persona.getName().toLowerCase() + "-intro" + i + ".mp4";
-                if (introVideos.stream().noneMatch(s -> s.endsWith(fileName))) {
+                String suffix = "-intro" + i;
+                if (introVideos.stream().noneMatch(s -> s.contains(suffix))) {
+                    String fileName = persona.getName().toLowerCase() + suffix;
                     log.debug("Creating intro {}", fileName);
-                    Moods[] moods = {Moods.Sarcastic, Moods.Love, Moods.Pride, Moods.Enthusiasm};
-                    AssistantResponse assistantResponse = getAnswer(introPrompt, persona.getName(), Moods.getRandomMood(moods), true);
-                    fileStore.save(fileName, assistantResponse.getVideo());
-                    introVideos.add(fileStore.getUrl(fileName));
+                    Moods[] moods = {Moods.Sarcastic, Moods.Enthusiasm};
+                    byte[] video = getVideo(introPrompt, moods, persona);
+                    fileStore.save(video, fileName, FileStore.MediaType.MP4);
+                    introVideos.add(fileStore.getUrl(fileName, FileStore.MediaType.MP4));
                 }
             } catch (Exception ex) {
                 log.warn("Unable to generate intro for {}", persona, ex);
@@ -250,9 +261,9 @@ public class VirtualAssistantApplication {
     private void loadSmallTalkVideos(Persona persona) {
         persona.getSmallTalkVideos().clear();
         for (int i = 1; i <= smallTalkNumber; i++) {
-            String fileName = persona.getName().toLowerCase() + "-smalltalk" + i + ".mp4";
-            if (fileStore.exists(fileName)) {
-                persona.getSmallTalkVideos().add(fileStore.getUrl(fileName));
+            String fileName = persona.getName().toLowerCase() + "-smalltalk" + i;
+            if (fileStore.exists(fileName, FileStore.MediaType.MP4)) {
+                persona.getSmallTalkVideos().add(fileStore.getUrl(fileName, FileStore.MediaType.MP4));
             }
         }
     }
@@ -260,9 +271,9 @@ public class VirtualAssistantApplication {
     private void loadStartingVideo(Persona persona) {
         persona.getStartingVideos().clear();
         for (int i = 1; i <= startingNumber; i++) {
-            String fileName = persona.getName().toLowerCase() + "-starting" + i + ".mp4";
-            if (fileStore.exists(fileName)) {
-                persona.getStartingVideos().add(fileStore.getUrl(fileName));
+            String fileName = persona.getName().toLowerCase() + "-starting" + i;
+            if (fileStore.exists(fileName, FileStore.MediaType.MP4)) {
+                persona.getStartingVideos().add(fileStore.getUrl(fileName, FileStore.MediaType.MP4));
             }
         }
     }
@@ -270,28 +281,24 @@ public class VirtualAssistantApplication {
     private void loadIntroVideos(Persona persona) {
         persona.getIntroVideos().clear();
         for (int i = 1; i <= introNumber; i++) {
-            String fileName = persona.getName().toLowerCase() + "-intro" + i + ".mp4";
-            if (fileStore.exists(fileName)) {
-                persona.getIntroVideos().add(fileStore.getUrl(fileName));
+            String fileName = persona.getName().toLowerCase() + "-intro" + i;
+            if (fileStore.exists(fileName, FileStore.MediaType.MP4)) {
+                persona.getIntroVideos().add(fileStore.getUrl(fileName, FileStore.MediaType.MP4));
             }
         }
     }
 
     private void loadIdleVideo(Persona persona) {
         persona.setIdleVideoUrl(null);
-        String idleVideoName = persona.getName().toLowerCase() + ".mp4";
-        if (fileStore.exists(idleVideoName)) {
-            persona.setIdleVideoUrl(fileStore.getUrl(idleVideoName));
+        String idleVideoName = persona.getName().toLowerCase();
+        if (fileStore.exists(idleVideoName, FileStore.MediaType.MP4)) {
+            persona.setIdleVideoUrl(fileStore.getUrl(idleVideoName, FileStore.MediaType.MP4));
             persona.setIdleVideoStatus("done");
         }
     }
 
     private boolean isPersonaAvailableToAnimate(Persona persona) {
-        return fileStore.exists(persona.getAvatarId());
-    }
-
-    private String getUniqueId(Persona persona, Object... fields) {
-        return persona.getName().toLowerCase() + "-" + Objects.hash(fields);
+        return fileStore.exists(persona.getName(), FileStore.MediaType.JPG);
     }
 
     @PostConstruct

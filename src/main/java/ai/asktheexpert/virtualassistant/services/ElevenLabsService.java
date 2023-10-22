@@ -1,11 +1,12 @@
 package ai.asktheexpert.virtualassistant.services;
 
-import ai.asktheexpert.virtualassistant.repositories.FileStore;
 import ai.asktheexpert.virtualassistant.models.Persona;
+import ai.asktheexpert.virtualassistant.repositories.FileStore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.CacheConfig;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
@@ -19,6 +20,7 @@ import java.io.IOException;
 import java.util.*;
 
 @Service
+// @CacheConfig(cacheManager = "fileStoreCacheManager")
 public class ElevenLabsService implements TextToSpeechService, PersonaService {
 
     public ElevenLabsService(ObjectMapper objectMapper, FileStore fileStore) {
@@ -26,7 +28,7 @@ public class ElevenLabsService implements TextToSpeechService, PersonaService {
         this.fileStore = fileStore;
     }
 
-    @Cacheable(value = "tts", key = "#persona.name + #persona.currentMood + #text")
+    @Cacheable(value = "tts", key = "#persona.name + #text")
     public byte[] getTextToSpeech(Persona persona, String text) throws Exception {
         RestTemplate restTemplate = new RestTemplate();
         HttpHeaders headers = new HttpHeaders();
@@ -100,8 +102,7 @@ public class ElevenLabsService implements TextToSpeechService, PersonaService {
     public Persona addPersona(String personaName, String personaRole, byte[] audio, byte[] profilePicture) throws IOException {
         String name = personaName.trim();
         log.debug("Adding persona {}", name);
-        String fileName = name.toLowerCase() + ".jpg";
-        fileStore.save(fileName, profilePicture);
+        fileStore.save(profilePicture, name, FileStore.MediaType.JPG);
 
         HttpHeaders headers = new HttpHeaders();
         headers.add("xi-api-key", tts_key);
