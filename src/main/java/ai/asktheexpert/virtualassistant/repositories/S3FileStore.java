@@ -67,7 +67,7 @@ public class S3FileStore implements FileStore {
     @Cacheable(value = "s3")
     public byte[] get(String name, MediaType mediaType, Object... params) throws IOException {
         String fileName = getFileName(name, mediaType, params);
-        if (exists(name)) {
+        if (exists(fileName)) {
             log.info("Fetching file: {}", fileName);
             S3Object result = amazonS3.getObject(bucket, fileName);
             return toByteArray(result.getObjectContent());

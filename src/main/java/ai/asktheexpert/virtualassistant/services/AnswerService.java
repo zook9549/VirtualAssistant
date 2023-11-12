@@ -1,7 +1,10 @@
 package ai.asktheexpert.virtualassistant.services;
 
-import ai.asktheexpert.virtualassistant.models.Persona;
+import ai.asktheexpert.virtualassistant.models.Assistant;
+import ai.asktheexpert.virtualassistant.models.AssistantResponse;
 
 public interface AnswerService {
-    String answer(String question, Persona persona);
+    AssistantResponse answer(String question, Assistant assistant);
+
+    void save(AssistantResponse assistantResponse);
 }

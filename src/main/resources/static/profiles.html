@@ -91,6 +91,10 @@
             font-size: medium;
         }
 
+        #answer a {
+            font-size: xx-large;
+        }
+
         #audioPlay {
             visibility: hidden;
             font-size: 50px;
@@ -156,12 +160,16 @@
             const formData = new FormData(document.getElementById('profileForm'));
             formData.append('audioSample', audioBlob);
 
-            fetch('./addPersona', {
+            fetch('./addAssistant', {
                 method: 'POST',
                 body: formData
             }).then(response => {
                 console.log('Audio uploaded successfully:', response);
-                document.getElementById("answer").innerText = "Persona Added!"
+                const divElement = document.getElementById('answer');
+                const linkElement = document.createElement('a');
+                linkElement.href = '/list.html?name=' + document.getElementById('assistantName').value;
+                linkElement.textContent = 'Assistant Added!';
+                divElement.appendChild(linkElement);
             });
         }
 
@@ -169,17 +177,17 @@
 </head>
 <body>
 <a href="/">Return to Ask the Expert</a> |
-<a href="/listPersonas?refresh=true">Refresh Personas</a>
-<form action="./addPersona" method="post" enctype="multipart/form-data" id="profileForm">
+<a href="/listAssistants?refresh=true">Refresh Assistants</a>
+<form action="./addAssistant" method="post" enctype="multipart/form-data" id="profileForm">
     <div id="content">
         <div class="form-group">
-            <label for="personaName">Name</label>
-            <input type="text" id="personaName" name="personaName" placeholder="Enter your name"/>
+            <label for="assistantName">Name</label>
+            <input type="text" id="assistantName" name="assistantName" placeholder="Enter your name"/>
         </div>
 
         <div class="form-group">
-            <label for="personaRole">Description</label>
-            <input type="text" id="personaRole" name="personaRole" placeholder="Your role, personality, etc."/>
+            <label for="role">Description</label>
+            <input type="text" id="role" name="role" placeholder="Your role, personality, etc."/>
         </div>
         <div class="form-group">
             <label for="imageUpload">Profile Picture</label>
@@ -212,7 +220,7 @@
         </div>
     </div>
     <div style="margin-top:50px">
-        <button type="button" onclick="submitForm()" id="add">Add Profile</button>
+        <button type="button" onclick="submitForm()" id="add">Add Assistant</button>
     </div>
 </form>
 

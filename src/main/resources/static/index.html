@@ -146,7 +146,7 @@
         let fetchingAnswer = false;
 
         document.addEventListener("DOMContentLoaded", function () {
-            fetch(`./listPersonas`, {
+            const personaFetch = fetch(`./listAssistants`, {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
@@ -155,7 +155,7 @@
                 .then(response => response.json())
                 .then(data => setPersonas(data));
 
-            fetch(`./listMoods`, {
+            const moodFetch = fetch(`./listMoods`, {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
@@ -164,9 +164,25 @@
                 .then(response => response.json())
                 .then(data => setMoods(data));
 
+
+            Promise.all([personaFetch, moodFetch])
+                .then(([personasData, moodsData]) => {
+                    setFormField('question');
+                    setFormField('person');
+                    setFormField('mood');
+                    playIdleVideo();
+                    if (getUrlParameter('question') != null && getUrlParameter('person') != '') {
+                        talkToMe();
+                    }
+                })
+                .catch(error => {
+                    console.error(error);
+                });
+
             document.getElementById('talk-video2').addEventListener('ended', transitionVideo, false);
             document.getElementById('talk-video2').addEventListener('error', playIdleVideo, false);
-            document.getElementById('person').addEventListener('change', introPersona, false);
+            document.getElementById('person').addEventListener('change', introPersona, false)
+
         });
 
         function introPersona() {
@@ -213,7 +229,7 @@
         }
 
         function talkToMe() {
-            let name = document.getElementById('person').value.toLowerCase();
+            let name = document.getElementById('person').value;
             document.getElementById('mediaBar').style.visibility = "hidden";
             let startingVideoIndex = startingVideosIndex.get(name);
             let videoName = startingVideos.get(name)[startingVideoIndex];
@@ -225,7 +241,7 @@
             playVideo(videoName);
             fetchingAnswer = true;
             document.getElementById('answer').innerText = "Generating response...";
-            questionUrl = "./askWithDetails?person=" + document.getElementById('person').value + "&mood=" + document.getElementById('mood').value + "&question=" + encodeURIComponent(document.getElementById('question').value);
+            questionUrl = "./askWithDetails?assistantId=" + document.getElementById('person').value + "&mood=" + document.getElementById('mood').value + "&question=" + encodeURIComponent(document.getElementById('question').value);
             fetch(questionUrl, {
                 method: 'GET',
                 headers: {
@@ -233,11 +249,12 @@
                 },
             }).then(response => response.json())
                 .then(data => parseResponse(data));
+            updateURL();
         }
 
         function parseResponse(data) {
             if (data != null) {
-                document.getElementById('answer').innerText = data.response;
+                document.getElementById('answer').innerText = data.detailedResponse;
                 if (data.audio != null) {
                     base64String = "data:audio/mp3;base64," + data.audio;
                     playAudio();
@@ -283,6 +300,7 @@
                     } else {
                         console.log("Playing response");
                         videoElement.src = src;
+                        playAfterBuffered(videoElement);
                     }
                 } else {
                     console.log("Playing existing video")
@@ -291,31 +309,77 @@
             }
             videoElement.loop = false;
         }
+        function playAfterBuffered(video) {
+            if (video.readyState >= 3) {
+                video.play()
+                    .then(() => {
+                    })
+                    .catch(error => {
+                        playIdleVideo();
+                    });
+            } else {
+                setTimeout(function() {
+                    playAfterBuffered(video);
+                }, 100);
+            }
+        }
+
+        function loadVideo(person) {
+            const video = document.createElement('video');
+            video.id = person + "-video";
+            video.autoplay = true;
+            video.muted = true;
+            video.playsInline = true;
+            video.style.display = "none";
+            video.addEventListener('ended', playIdleVideo, false);
+            video.addEventListener('click', function () {
+                playVideo();
+            });
+
+            const source = document.createElement('source');
+            source.src = idleVideo.get(person);
+            video.src = idleVideo.get(person);
+            source.type = 'video/mp4';
+
+            video.appendChild(source);
+
+            const container = document.getElementById('video-container');
+            container.appendChild(video);
+        }
+
+        function hideVideo(excluded) {
+            const videos = document.querySelectorAll('video');
+            videos.forEach((video) => {
+                if (excluded == null || video.id !== excluded.id) {
+                    video.style.display = 'none';
+                }
+            });
+        }
 
         function isVideoPlaying(video) {
             return !video.paused && !video.ended && video.currentTime > 0;
         }
 
         function setPersonas(data) {
-            var select = document.getElementById('person');
+            let select = document.getElementById('person');
             for (let i = 0; i < data.length; i++) {
                 let option = document.createElement('option');
-                option.value = data[i].name.toLowerCase();
+                let assistantId = data[i].assistantId;
+                option.value = assistantId
                 option.text = data[i].name;
                 select.appendChild(option);
-                startingVideosIndex.set(data[i].name.toLowerCase(), 0);
-                introVideosIndex.set(data[i].name.toLowerCase(), 0);
-                startingVideos.set(data[i].name.toLowerCase(), shuffle(data[i].startingVideos));
-                introVideos.set(data[i].name.toLowerCase(), shuffle(data[i].introVideos));
-                introduced.set(data[i].name.toLowerCase(), false);
-                idleVideo.set(data[i].name.toLowerCase(), data[i].idleVideoUrl);
-                loadVideo(data[i].name.toLowerCase());
+                startingVideosIndex.set(assistantId, 0);
+                introVideosIndex.set(assistantId, 0);
+                startingVideos.set(assistantId, shuffle(data[i].startingVideos));
+                introVideos.set(assistantId, shuffle(data[i].introVideos));
+                introduced.set(assistantId, false);
+                idleVideo.set(assistantId, data[i].idleVideo);
+                loadVideo(assistantId);
             }
-            playIdleVideo();
         }
 
         function setMoods(data) {
-            var select = document.getElementById('mood');
+            let select = document.getElementById('mood');
             for (let i = 0; i < data.length; i++) {
                 var option = document.createElement('option');
                 option.value = data[i];
@@ -341,89 +405,72 @@
 
         function shuffle(array) {
             for (let i = array.length - 1; i > 0; i--) {
-                // Generate a random index between 0 and i (inclusive)
                 let j = Math.floor(Math.random() * (i + 1));
-
-                // Swap elements at indices i and j
                 [array[i], array[j]] = [array[j], array[i]];
             }
             return array;
         }
 
-        function loadVideo(person) {
-            // Create a video element
-            const video = document.createElement('video');
-            video.id = person + "-video";
-            video.autoplay = true;
-            video.muted = true;
-            video.playsInline = true;
-            video.style.display = "none";
-            video.addEventListener('ended', playIdleVideo, false);
-            video.addEventListener('click', function () {
-                playVideo();
-            });
-
-
-            const source = document.createElement('source');
-            source.src = idleVideo.get(person);
-            video.src = idleVideo.get(person);
-            source.type = 'video/mp4';
-
-
-            video.appendChild(source);
-
-            const container = document.getElementById('video-container');
-            container.appendChild(video);
+        function getUrlParameter(name) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(name);
         }
 
-        function hideVideo(excluded) {
-            const videos = document.querySelectorAll('video');
-            videos.forEach((video) => {
-                if(excluded == null || video.id !== excluded.id) {
-                    video.style.display = 'none';
-                }
-            });
+        function setFormField(name) {
+            console.log("Setting " + name + " to " + getUrlParameter(name));
+            let priorVal = document.getElementById(name).value;
+            document.getElementById(name).value = getUrlParameter(name) || priorVal;
         }
+
+        function updateURL() {
+            const queryParams = "person=" + document.getElementById('person').value + "&mood=" + document.getElementById('mood').value + "&question=" + encodeURIComponent(document.getElementById('question').value)
+            history.replaceState(null, '', '?' + queryParams);
+        }
+
     </script>
 </head>
 <body>
 <div id="content">
-    <div id="video-wrapper">
-        <div id="video-container">
-            <video id="talk-video2" autoplay loop playsinline
-                   onclick="transitionVideo()">
-                <source src="" type="video/mp4">
-            </video>
-        </div>
-    </div>
-    <br/>
-    <div>
-        <div>
-            <select id="mood">
-                <options>
-                </options>
-            </select>
-            <select id="person" onchange="playIdleVideo()">
-                <options>
-                </options>
-            </select>
-        </div>
-        <div class="textarea-container">
-            <textarea id="question" placeholder="Enter your question here..."></textarea>
-            <span class="material-icons" onclick="clearTextarea()" id="cancel" title="Clear the Question">cancel</span>
+    <form id="talkForm">
+        <div id="video-wrapper">
+            <div id="video-container">
+                <video id="talk-video2" autoplay loop playsinline
+                       onclick="transitionVideo()">
+                    <source src="" type="video/mp4">
+                </video>
+            </div>
         </div>
         <br/>
-        <button id="talk-button" type="button" onclick="talkToMe()">Ask</button>
-    </div>
-    <br/>
-    <div id="mediaBar">
-        <audio id="audioAnswer" controls>
-            <source src="" type="audio/mp3">
-            Your browser does not support the audio element.
-        </audio>
-        <span class="material-icons" onclick="downloadVideo()" id="download" title="Download the video">download</span>
-    </div>
-    <div id="answer"></div>
+        <div>
+            <div>
+                <select id="mood">
+                    <options>
+                    </options>
+                </select>
+                <select id="person" onchange="playIdleVideo()">
+                    <options>
+                    </options>
+                </select>
+            </div>
+            <div class="textarea-container">
+                <textarea id="question" placeholder="Enter your question here..."></textarea>
+                <span class="material-icons" onclick="clearTextarea()" id="cancel"
+                      title="Clear the Question">cancel</span>
+            </div>
+            <br/>
+            <button id="talk-button" type="button" onclick="talkToMe()">Ask</button>
+        </div>
+        <br/>
+        <div id="mediaBar">
+            <audio id="audioAnswer" controls>
+                <source src="" type="audio/mp3">
+                Your browser does not support the audio element.
+            </audio>
+            <span class="material-icons" onclick="downloadVideo()" id="download"
+                  title="Download the video">download</span>
+        </div>
+        <div id="answer"></div>
+    </form>
 </div>
 </body>
 </html>

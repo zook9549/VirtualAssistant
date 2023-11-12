@@ -1,12 +1,11 @@
 package ai.asktheexpert.virtualassistant.services;
 
-import ai.asktheexpert.virtualassistant.models.Persona;
+import ai.asktheexpert.virtualassistant.models.Assistant;
 import ai.asktheexpert.virtualassistant.repositories.FileStore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.cache.annotation.CacheConfig;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -30,24 +29,24 @@ public class DigitalIDService implements AvatarService, CreditService {
     }
 
     @Cacheable(value = "video", key = "#audioUrl.path")
-    public byte[] getVideo(Persona persona, URL audioUrl) throws Exception {
+    public byte[] getVideo(Assistant assistant, URL audioUrl) throws Exception {
         Map<String, Object> script = new HashMap<>();
         script.put("type", "audio");
         script.put("audio_url", audioUrl.toString());
-        return getVideo(persona, script);
+        return getVideo(assistant, script);
     }
 
-    public byte[] getVideo(Persona persona, String text) throws Exception {
+    public byte[] getVideo(Assistant assistant, String text) throws Exception {
         Map<String, Object> script = new HashMap<>();
         script.put("type", "text");
         script.put("ssml", "true");
         script.put("input", text);
-        return getVideo(persona, script);
+        return getVideo(assistant, script);
     }
 
-    private byte[] getVideo(Persona persona, Map<String, Object> audioHeader) throws Exception {
+    private byte[] getVideo(Assistant assistant, Map<String, Object> audioHeader) throws Exception {
         byte[] video;
-        String imgUrl = fileStore.getUrl(persona.getName().toLowerCase(), FileStore.MediaType.JPG);
+        String imgUrl = fileStore.getUrl(assistant.getAssistantId(), FileStore.MediaType.JPG);
 
         Map<String, Object> config = new HashMap<>();
         config.put("fluent", "false");

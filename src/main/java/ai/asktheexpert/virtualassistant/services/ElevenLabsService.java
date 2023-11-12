@@ -1,12 +1,11 @@
 package ai.asktheexpert.virtualassistant.services;
 
-import ai.asktheexpert.virtualassistant.models.Persona;
+import ai.asktheexpert.virtualassistant.models.Assistant;
 import ai.asktheexpert.virtualassistant.repositories.FileStore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.cache.annotation.CacheConfig;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
@@ -21,15 +20,14 @@ import java.util.*;
 
 @Service
 // @CacheConfig(cacheManager = "fileStoreCacheManager")
-public class ElevenLabsService implements TextToSpeechService, PersonaService {
+public class ElevenLabsService implements TextToSpeechService {
 
-    public ElevenLabsService(ObjectMapper objectMapper, FileStore fileStore) {
+    public ElevenLabsService(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
-        this.fileStore = fileStore;
     }
 
-    @Cacheable(value = "tts", key = "#persona.name + #text")
-    public byte[] getTextToSpeech(Persona persona, String text) throws Exception {
+    @Cacheable(value = "tts", key = "#assistant.assistantId + #text")
+    public byte[] getTextToSpeech(Assistant assistant, String text) throws Exception {
         RestTemplate restTemplate = new RestTemplate();
         HttpHeaders headers = new HttpHeaders();
         headers.add("xi-api-key", tts_key);
@@ -49,7 +47,7 @@ public class ElevenLabsService implements TextToSpeechService, PersonaService {
         String jsonRequest = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(payload);
 
         HttpEntity<String> entity = new HttpEntity<>(jsonRequest, headers);
-        String ttsFullUrl = tts_url + "/v1/text-to-speech/" + persona.getVoiceId() + "/stream?optimize_streaming_latency=0&output_format=mp3_44100_64";
+        String ttsFullUrl = tts_url + "/v1/text-to-speech/" + assistant.getVoiceId() + "/stream?optimize_streaming_latency=0&output_format=mp3_44100_64";
         ResponseEntity<byte[]> response = restTemplate.exchange(ttsFullUrl, HttpMethod.POST, entity, byte[].class);
         log.debug("Completed getting text to speech");
         return response.getBody();
@@ -70,40 +68,7 @@ public class ElevenLabsService implements TextToSpeechService, PersonaService {
         return remaining;
     }
 
-    @Override
-    public Collection<Persona> getPersonas() {
-        log.debug("Getting all configured personas");
-        List<Persona> personas = new ArrayList<>();
-        HttpHeaders headers = new HttpHeaders();
-        headers.add("xi-api-key", tts_key);
-        headers.set("Content-Type", "application/json");
-
-        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(headers);
-
-        RestTemplate restTemplate = new RestTemplate();
-        ResponseEntity<Map> response = restTemplate.exchange(tts_url + "/v1/voices", HttpMethod.GET, entity, Map.class);
-        List<Map<String, Object>> voices = (List) (response.getBody().get("voices"));
-        for (Map voice : voices) {
-            String name = voice.get("name").toString();
-            if (voice.get("category").equals("cloned") && !name.endsWith("-")) {
-                Persona persona = new Persona();
-                persona.setName(name);
-                persona.setRole(voice.get("description").toString());
-                persona.setVoiceId(voice.get("voice_id").toString());
-                persona.setAvatarId(persona.getName().toLowerCase() + ".jpg");
-                personas.add(persona);
-            }
-        }
-        log.debug("Personas found: {}", personas);
-        return personas;
-    }
-
-
-    public Persona addPersona(String personaName, String personaRole, byte[] audio, byte[] profilePicture) throws IOException {
-        String name = personaName.trim();
-        log.debug("Adding persona {}", name);
-        fileStore.save(profilePicture, name, FileStore.MediaType.JPG);
-
+    public String save(String name, String personaRole, byte[] audio)  {
         HttpHeaders headers = new HttpHeaders();
         headers.add("xi-api-key", tts_key);
         headers.setContentType(MediaType.MULTIPART_FORM_DATA);
@@ -127,15 +92,9 @@ public class ElevenLabsService implements TextToSpeechService, PersonaService {
 
         RestTemplate restTemplate = new RestTemplate();
         ResponseEntity<Map> response = restTemplate.exchange(tts_url + "/v1/voices/add", HttpMethod.POST, entity, Map.class);
-        log.debug("Response {}", response.getBody());
         String voiceId = response.getBody().get("voice_id").toString();
-        Persona persona = new Persona();
-        persona.setRole(personaRole);
-        persona.setName(name);
-        persona.setVoiceId(voiceId);
-        persona.setAvatarId(persona.getName().toLowerCase() + ".jpg");
-        log.debug("Added persona {}", persona);
-        return persona;
+        log.debug("Added voice {}", voiceId);
+        return voiceId;
     }
 
     @Value("${tts_url}")
@@ -144,7 +103,6 @@ public class ElevenLabsService implements TextToSpeechService, PersonaService {
     private String tts_key;
 
     private final ObjectMapper objectMapper;
-    private final FileStore fileStore;
 
     private static final Logger log = LoggerFactory.getLogger(ElevenLabsService.class);
 }

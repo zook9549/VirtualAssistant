@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Ask the Expert</title>
+    <link rel="icon" href="/favicon.ico" type="image/x-icon">
+    <link rel="preconnect" href="https://fonts.googleapis.com"/>
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+    <link
+            href="https://fonts.googleapis.com/css2?family=Mulish:wght@300;400;700&display=swap"
+            rel="stylesheet"
+    />
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+
+    <style>
+        #mood, #person {
+            font-size: xxx-large;
+            width: 400px;
+        }
+
+        body * {
+            font-family: 'Mulish', sans-serif;
+            text-align: center;
+            font-size: xx-large;
+        }
+
+        .material-icons {
+            background-color: #7459fe;
+            color: #fff;
+            font-size: 24px;
+        }
+
+        button {
+            padding: 10px 20px;
+            border-radius: 5px;
+            border: none;
+            font-size: xxx-large;
+            margin: 10px 5px;
+            background-color: #7459fe;
+            color: #fff;
+            width: 80vw;
+            max-width: 800px;
+            height: 7vh;
+            min-height: 100px;
+        }
+
+        button:hover {
+            background-color: #9480ff;
+            cursor: pointer;
+            transition: all 0.2s ease-out;
+        }
+
+        .grid-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr; /* Two columns */
+            gap: 20px;
+        }
+
+        .grid-item {
+            background-color: #f4f4f4;
+            border: 1px solid #ccc;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .label {
+            font-weight: bold;
+            text-align: right;
+        }
+
+        .label-value {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+    </style>
+    <script>
+
+
+        document.addEventListener("DOMContentLoaded", function () {
+            const personaFetch = fetch(`./listAssistants`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            })
+                .then(response => response.json())
+                .then(data => generatePeopleGrid(data));
+        });
+        // Function to generate the grid using the JSON data
+        function generatePeopleGrid(data) {
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const name = urlParams.get('name');
+            const peopleGrid = document.getElementById('people-list');
+
+            data.forEach(person => {
+                if(name == null || name.toLowerCase() == person.name.toLowerCase()) {
+                    const gridItem = document.createElement('div');
+                    gridItem.className = 'grid-item';
+
+                    // Iterate through the attributes and create label-value pairs
+                    for (const attribute in person) {
+                        if (person.hasOwnProperty(attribute)) {
+                            const labelValueContainer = document.createElement('div');
+                            labelValueContainer.className = 'label-value';
+
+                            const label = document.createElement('div');
+                            label.className = 'label';
+                            label.textContent = `${attribute}:`;
+
+                            const value = document.createElement('div');
+                            value.textContent = person[attribute];
+
+                            labelValueContainer.appendChild(label);
+                            labelValueContainer.appendChild(value);
+
+                            gridItem.appendChild(labelValueContainer);
+                        }
+                    }
+                    peopleGrid.appendChild(gridItem);
+                }
+            });
+        }
+
+    </script>
+</head>
+<body>
+<a href="/">Return to Ask the Expert</a>
+<div id="content">
+    <ul id="people-list">
+    </ul>
+</div>
+</body>
+</html>
