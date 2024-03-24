@@ -50,11 +50,11 @@ public class S3FileStore implements FileStore {
 
     private String save(byte[] contents, String fileName) throws IOException {
         if (!exists(fileName)) {
-            log.info("Uploading new file: {}", fileName);
+            log.debug("Uploading new file: {}", fileName);
         } else {
-            log.info("Updating an existing file {}", fileName);
+            log.debug("Updating an existing file {}", fileName);
         }
-        try (InputStream is = new ByteArrayInputStream(contents);) {
+        try (InputStream is = new ByteArrayInputStream(contents)) {
             ObjectMetadata metaData = new ObjectMetadata();
             metaData.setContentLength(contents.length);
             metaData.setContentType(getMimeTypeFromExtension(fileName));
@@ -68,7 +68,7 @@ public class S3FileStore implements FileStore {
     public byte[] get(String name, MediaType mediaType, Object... params) throws IOException {
         String fileName = getFileName(name, mediaType, params);
         if (exists(fileName)) {
-            log.info("Fetching file: {}", fileName);
+            log.debug("Fetching file: {}", fileName);
             S3Object result = amazonS3.getObject(bucket, fileName);
             return toByteArray(result.getObjectContent());
         } else {
@@ -81,7 +81,7 @@ public class S3FileStore implements FileStore {
     public String getUrl(String name, MediaType mediaType, Object... params) {
         String fileName = getFileName(name, mediaType, params);
         if (exists(fileName)) {
-            log.info("Fetching file path: {}", fileName);
+            log.debug("Fetching file path: {}", fileName);
             return ((AmazonS3Client) amazonS3).getResourceUrl(bucket, fileName);
         } else {
             log.info("No external file path found: {}", fileName);
@@ -94,11 +94,11 @@ public class S3FileStore implements FileStore {
     public boolean delete(String name, MediaType mediaType, Object... params) {
         String fileName = getFileName(name, mediaType, params);
         if (exists(fileName)) {
-            log.info("Deleting  file: {}", fileName);
+            log.debug("Deleting  file: {}", fileName);
             amazonS3.deleteObject(bucket, fileName);
             return true;
         } else {
-            log.info("Skipping delete since file doesn't exist: {}", fileName);
+            log.debug("Skipping delete since file doesn't exist: {}", fileName);
             return false;
         }
     }
@@ -112,10 +112,10 @@ public class S3FileStore implements FileStore {
     }
 
 
-    private String getFileName(String name, MediaType mediaType, Object... params) {
+    public String getFileName(String name, MediaType mediaType, Object... params) {
         StringBuilder result = new StringBuilder();
         if (name != null && !name.isEmpty()) {
-            result.append(name.toLowerCase().replace(' ', '_'));
+            result.append(name.toLowerCase().replace(' ', '_').replace('/', '_'));
         }
         if (params != null && params.length > 0) {
             Object[] lowercaseStrings = new Object[params.length];
@@ -144,7 +144,7 @@ public class S3FileStore implements FileStore {
     }
 
     private byte[] toByteArray(InputStream inputStream) throws IOException {
-        try (ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();) {
+        try (ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream()) {
             byte[] buffer = new byte[1024];
             int len;
             while ((len = inputStream.read(buffer)) != -1) {

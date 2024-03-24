@@ -2,21 +2,38 @@ package ai.asktheexpert.virtualassistant.services;
 
 import ai.asktheexpert.virtualassistant.models.Assistant;
 import ai.asktheexpert.virtualassistant.models.AssistantResponse;
+import ai.asktheexpert.virtualassistant.models.Event;
+import ai.asktheexpert.virtualassistant.repositories.FileStore;
+import org.jcodec.api.FrameGrab;
+import org.jcodec.api.JCodecException;
+import org.jcodec.common.io.FileChannelWrapper;
+import org.jcodec.common.io.NIOUtils;
+import org.jcodec.common.model.Picture;
+import org.jcodec.scale.AWTUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.Cacheable;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.*;
+import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.netty.http.client.HttpClient;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.*;
+import java.nio.file.Files;
+import java.time.Duration;
 import java.util.*;
 
 @Service
 public class ChatGPTService implements AnswerService, AssistantService {
+
+    public ChatGPTService(FileStore fileStore) {
+        this.fileStore = fileStore;
+    }
 
     @Override
     public Collection<Assistant> getAssistants() {
@@ -70,9 +87,15 @@ public class ChatGPTService implements AnswerService, AssistantService {
         requestBody.put("model", "gpt-4-1106-preview");
 
         Map<String, String> metaData = new HashMap<>();
-        metaData.put("voiceId", assistant.getVoiceId());
-        metaData.put("avatarId", assistant.getAvatarId());
-        metaData.put("profilePicture", assistant.getProfilePicture());
+        if (assistant.getVoiceId() != null) {
+            metaData.put("voiceId", assistant.getVoiceId());
+        }
+        if (assistant.getAvatarId() != null) {
+            metaData.put("avatarId", assistant.getAvatarId());
+        }
+        if (assistant.getProfilePicture() != null) {
+            metaData.put("profilePicture", assistant.getProfilePicture());
+        }
         if (assistant.getIdleVideo() != null) {
             metaData.put("idleVideo", assistant.getIdleVideo());
         }
@@ -96,14 +119,14 @@ public class ChatGPTService implements AnswerService, AssistantService {
 
 
         HttpHeaders headers = createHeaders();
-        HttpEntity<Map<String, Object>> entity = null;
+        HttpEntity<Map<String, Object>> entity;
         Map<String, Object> message = createMessage(question);
         RestTemplate restTemplate = new RestTemplate();
         String engineeredPrompt = createEngineeredPrompt(assistant);
         log.debug("Fetching answer with prompt: {}", engineeredPrompt);
 
         LinkedHashMap<String, List<AssistantResponse>> threads = assistant.getThreads();
-        List<AssistantResponse> responses = null;
+        List<AssistantResponse> responses;
         String threadId = threads.isEmpty() ? null : new ArrayList<>(threads.keySet()).get(threads.size() - 1);
         if (threadId == null) {
             Map<String, Object> thread = new HashMap<>();
@@ -130,6 +153,66 @@ public class ChatGPTService implements AnswerService, AssistantService {
         responses.add(assistantResponse);
         return assistantResponse;
     }
+
+    public String narrate(Event event) throws IOException {
+        WebClient webClient = WebClient.builder()
+                .baseUrl("https://api.openai.com/v1")
+                .clientConnector(new ReactorClientHttpConnector(
+                        HttpClient.create()
+                                .responseTimeout(Duration.ofSeconds(60))
+                ))
+                .defaultHeader("Authorization", "Bearer " + chatgptApiKey)
+                .defaultHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                .build();
+
+        List<Map<String, Object>> conversation = new ArrayList<>();
+        Map<String, Object> userMessage = new HashMap<>();
+        userMessage.put("role", "user");
+
+        List<Map<String, Object>> content = new ArrayList<>();
+
+        Map<String, Object> prompt = new HashMap<>();
+        prompt.put("type", "text");
+        prompt.put("text", narrationPrompt);
+        content.add(prompt);
+        byte[] video = fileStore.get(event.getCamera().getId(), FileStore.MediaType.MP4, event.getEventId());
+        List<BufferedImage> images = extractFrames(video, 5);
+        for (BufferedImage image : images) {
+            try (ByteArrayOutputStream  outputStream = new ByteArrayOutputStream()) {
+                ImageIO.write(image, "jpg", outputStream);
+                Map<String, Object> imageInfo = new HashMap<>();
+                imageInfo.put("type", "image_url");
+                Map<String, String> imageDetail = new HashMap<>();
+                String encodedString = Base64.getEncoder().encodeToString(outputStream.toByteArray());
+                imageDetail.put("url", "data:image/png;base64," + encodedString);
+                imageInfo.put("image_url", imageDetail);
+                content.add(imageInfo);
+            } catch (IOException e) {
+                log.warn("Unable to parse images from video", e);
+            }
+        }
+
+        userMessage.put("content", content);
+        conversation.add(userMessage);
+
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("max_tokens", 500);
+        requestBody.put("temperature", 0.8);
+        requestBody.put("model", "gpt-4-vision-preview");
+        requestBody.put("messages", conversation);
+
+        Map<String, Object> response = webClient.post()
+                .uri("/chat/completions")
+                .bodyValue(requestBody)
+                .retrieve()
+                .bodyToMono(Map.class)
+                .block();
+
+        String answer = ((Map<?, ?>) ((Map<?, ?>) ((List<?>) response.get("choices")).get(0)).get("message")).get("content").toString();
+        log.debug("Completed getting image prompt: {}", answer);
+        return answer;
+    }
+
 
     public void save(AssistantResponse assistantResponse) {
         RestTemplate restTemplate = new RestTemplate();
@@ -271,10 +354,50 @@ public class ChatGPTService implements AnswerService, AssistantService {
         return assistant;
     }
 
+    public List<BufferedImage> extractFrames(byte[] videoBytes, int intervalInSeconds) {
+        List<BufferedImage> images = new ArrayList<>();
+        File tempFile = null;
+        try {
+            tempFile = Files.createTempFile("temp-video", ".mp4").toFile();
+            try (FileOutputStream fos = new FileOutputStream(tempFile)) {
+                fos.write(videoBytes);
+            }
+
+            // Use the temporary file with JCodec
+            try (FileChannelWrapper ch = NIOUtils.readableChannel(tempFile)) {
+                FrameGrab grab = FrameGrab.createFrameGrab(ch);
+                int frameRate = (int) Math.round(grab.getVideoTrack().getMeta().getTotalFrames() / grab.getVideoTrack().getMeta().getTotalDuration());
+
+                Picture picture;
+                int frameNumber = 0;
+                int frameInterval = frameRate * intervalInSeconds; // Number of frames to skip
+
+                while ((picture = grab.getNativeFrame()) != null) {
+                    if (frameNumber % frameInterval == 0) {
+                        BufferedImage image = AWTUtil.toBufferedImage(picture);
+                        images.add(image);
+                    }
+                    frameNumber++;
+                }
+            }
+        } catch (IOException | JCodecException e) {
+            log.warn("Error extracting frames", e);
+        } finally {
+            if (tempFile != null) {
+                tempFile.delete();
+            }
+        }
+        return images;
+    }
+
+
     @Value("${chatgpt.api.key}")
     private String chatgptApiKey;
     @Value("${chatgpt.api.url}")
     private String chatGptUrl;
+    @Value("${narration.prompt}")
+    private String narrationPrompt;
+    private final FileStore fileStore;
 
     private static final Logger log = LoggerFactory.getLogger(ChatGPTService.class);
     private static final List<String> PROCESSING_STATUSES = Arrays.asList("pending", "queued", "in_progress");

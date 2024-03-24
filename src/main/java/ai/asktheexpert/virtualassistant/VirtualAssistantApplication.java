@@ -1,12 +1,12 @@
 package ai.asktheexpert.virtualassistant;
 
-import ai.asktheexpert.virtualassistant.models.Assistant;
-import ai.asktheexpert.virtualassistant.models.AssistantResponse;
-import ai.asktheexpert.virtualassistant.models.Modes;
-import ai.asktheexpert.virtualassistant.models.Moods;
+import ai.asktheexpert.virtualassistant.models.*;
 import ai.asktheexpert.virtualassistant.repositories.FileStore;
 import ai.asktheexpert.virtualassistant.services.*;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
+import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -14,16 +14,30 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cache.annotation.EnableCaching;
+import org.springframework.context.annotation.Bean;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClientProvider;
+import org.springframework.security.oauth2.client.OAuth2AuthorizedClientProviderBuilder;
+import org.springframework.security.oauth2.client.annotation.RegisteredOAuth2AuthorizedClient;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.oauth2.client.web.DefaultOAuth2AuthorizedClientManager;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizedClientRepository;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
 import java.net.URL;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 @SpringBootApplication
@@ -32,12 +46,15 @@ import java.util.*;
 @EnableCaching
 public class VirtualAssistantApplication {
 
-    public VirtualAssistantApplication(FileStore fileStore, ElevenLabsService textToSpeechService, @Qualifier("chatGPTService") AssistantService assistantService, AnswerService answerService, AvatarService avatarService) {
+    public VirtualAssistantApplication(ObjectMapper objectMapper, FileStore fileStore, ElevenLabsService textToSpeechService, @Qualifier("chatGPTService") AssistantService assistantService, AnswerService answerService, AvatarService avatarService, CameraService cameraService, EventService eventService) {
+        this.objectMapper = objectMapper;
         this.fileStore = fileStore;
         this.textToSpeechService = textToSpeechService;
         this.assistantService = assistantService;
         this.answerService = answerService;
+        this.cameraService = cameraService;
         this.avatarService = avatarService;
+        this.eventService = eventService;
     }
 
     public static void main(String[] args) {
@@ -320,8 +337,123 @@ public class VirtualAssistantApplication {
     }
 
     @PostConstruct
-    public void loadPersonas() throws Exception {
+    public void loadPersonas() {
         getAssistants(true);
+    }
+
+    @RequestMapping(value = "/auth/stream", produces = "application/json")
+    public Event getStream(String cameraId) throws Exception {
+        Optional<Camera> match = cameraService.getCameras().stream().filter(camera -> camera.getId().equals(cameraId)).findFirst();
+        if (match.isPresent()) {
+            Camera camera = match.get();
+            LocalDateTime now = LocalDateTime.now();
+            LocalDateTime roundedDownToMinute = now.truncatedTo(ChronoUnit.MINUTES);
+            long minutesToSubtract = roundedDownToMinute.getMinute() % 5;
+            LocalDateTime roundedDownToFiveMinutes = roundedDownToMinute.minusMinutes(minutesToSubtract);
+
+            LocalDateTime timeLastAccessed = lastAccessed.put(camera, roundedDownToFiveMinutes);
+            if (timeLastAccessed == null || roundedDownToFiveMinutes.isAfter(timeLastAccessed)) {
+                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd:HH:mm");
+                String bufferedTime = roundedDownToFiveMinutes.format(formatter);
+
+                Event existingEvent = eventService.getEvent(cameraId, bufferedTime);
+                if (existingEvent != null) {
+                    log.debug("Returning recent event: {}", existingEvent);
+                    return existingEvent;
+                } else {
+                    log.debug("Processing event for camera: {}", camera);
+                    Event event = new Event();
+                    event.setCamera(camera);
+                    event.setEventDateTime(now);
+                    event.setEventId(bufferedTime);
+                    String url = cameraService.getStream(camera, event.getEventId());
+                    if (url != null) {
+                        event.setVideoUrl(url);
+                        String narration = answerService.narrate(event);
+                        event.setNarration(narration);
+                        eventService.save(event);
+                        log.info("Completed processing event: {}", event);
+                    } else {
+                        log.debug("Unable to create stream for camera {}", camera);
+                    }
+                    return event;
+                }
+            } else {
+                log.debug("Camera was accessed in the last 5 minutes - {}.  Ignoring event", timeLastAccessed);
+            }
+        } else {
+            log.debug("No matching camera found for {}", cameraId);
+        }
+        return null;
+    }
+
+    @RequestMapping(value = "/auth/cameras", produces = "application/json")
+    public List<Camera> getCameras(@RegisteredOAuth2AuthorizedClient("google") OAuth2AuthorizedClient authorizedClient) {
+        return cameraService.getCameras();
+    }
+
+    @RequestMapping(value = "/events", produces = "application/json")
+    public List<Event> getEvents() {
+        return eventService.getAllEvents();
+    }
+
+    @RequestMapping(value = "/narrate", produces = "application/json")
+    public AssistantResponse narrateEvent(String cameraId, String eventId, String assistantId, @RequestParam(required = false) Moods mood) throws Exception {
+        Event event = eventService.getEvent(cameraId, eventId);
+        if(event != null) {
+            AssistantResponse response = getAnswer(narrationAssistant + " {" + event.getNarration() + "}", assistantId, mood);
+            response.setTrigger(event);
+            return response;
+        } else {
+            log.debug("Event no longer exists: {}", eventId);
+            return null;
+        }
+    }
+
+    @RequestMapping(value = "/pubsub/event")
+    public ResponseEntity<?> receiveMessage(HttpServletRequest req) {
+        try {
+            JsonNode bodyNode = objectMapper.readTree(req.getReader());
+            if (bodyNode != null && bodyNode.get("message") != null && bodyNode.get("message").get("data") != null) {
+                String base64Data = bodyNode.get("message")
+                        .get("data").asText();
+                String cameraInfo = new String(Base64.getDecoder().decode(base64Data));
+                log.debug("Received event: " + cameraInfo);
+                JsonNode cameraNode = objectMapper.readTree(cameraInfo);
+                String utcTimestamp = cameraNode.path("timestamp").asText();
+                Instant timestampInstant = Instant.parse(utcTimestamp);
+                long minutesDifference = ChronoUnit.MINUTES.between(timestampInstant, Instant.now());
+                if (minutesDifference < 5) {
+                    JsonNode resourceUpdateNode = cameraNode.path("resourceUpdate");
+                    String resource = resourceUpdateNode.path("name").asText();
+                    getStream(resource);
+                } else {
+                    log.debug("Skipped processing since event occurred {} minutes ago", minutesDifference);
+                }
+            }
+        } catch (Exception ex) {
+            log.info("Unable to process event", ex);
+        }
+        return new ResponseEntity<>(HttpStatus.OK);
+    }
+
+    @Bean
+    public OAuth2AuthorizedClientManager authorizedClientManager(
+            ClientRegistrationRepository clientRegistrationRepository,
+            OAuth2AuthorizedClientRepository authorizedClientRepository) {
+
+        OAuth2AuthorizedClientProvider authorizedClientProvider =
+                OAuth2AuthorizedClientProviderBuilder.builder()
+                        .authorizationCode()
+                        .refreshToken()
+                        .build();
+
+        DefaultOAuth2AuthorizedClientManager authorizedClientManager =
+                new DefaultOAuth2AuthorizedClientManager(
+                        clientRegistrationRepository, authorizedClientRepository);
+        authorizedClientManager.setAuthorizedClientProvider(authorizedClientProvider);
+
+        return authorizedClientManager;
     }
 
     @Value("${starting.prompt}")
@@ -336,7 +468,9 @@ public class VirtualAssistantApplication {
     private int startingNumber;
     @Value("${intro.number}")
     private int introNumber;
-
+    @Value("${narration.assistant}")
+    private String narrationAssistant;
+    private final ObjectMapper objectMapper;
 
     private final Map<String, Assistant> availableAssistants = new HashMap<>();
     private final FileStore fileStore;
@@ -344,6 +478,9 @@ public class VirtualAssistantApplication {
     private final AssistantService assistantService;
     private final AnswerService answerService;
     private final AvatarService avatarService;
+    private final CameraService cameraService;
+    private final EventService eventService;
+    private final Map<Camera, LocalDateTime> lastAccessed = new HashMap<>();
 
     private static final Logger log = LoggerFactory.getLogger(VirtualAssistantApplication.class);
 

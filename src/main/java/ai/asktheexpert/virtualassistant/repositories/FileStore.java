@@ -21,13 +21,15 @@ public interface FileStore {
 
     boolean exists(String name, MediaType mediaType, Object... params);
 
-    public static final Map<String, String> MIME_TYPE_MAP = Map.of(
+    String getFileName(String name, MediaType mediaType, Object... params);
+
+    final Map<String, String> MIME_TYPE_MAP = Map.of(
             "image/jpeg", "jpg",
             "video/mp4", "mp4",
             "audio/mpeg", "mp3"
     );
 
-    public enum MediaType {
+    enum MediaType {
         MP4("mp4", "video/mp4"), MP3("mp3", "audio/mpeg"), JPG("jpg","image/jpeg");
 
         private final String value;
@@ -52,7 +54,7 @@ public interface FileStore {
         }
     }
 
-    public static byte[] downloadFileBytes(URL url) throws IOException {
+    static byte[] downloadFileBytes(URL url) throws IOException {
         URLConnection connection = url.openConnection();
         try (InputStream inputStream = connection.getInputStream();
              ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream()) {
@@ -67,7 +69,7 @@ public interface FileStore {
         }
     }
 
-    public static boolean existsAtUrl(String urlString) {
+    static boolean existsAtUrl(String urlString) {
         try {
             URL url = new URL(urlString);
             HttpURLConnection connection = (HttpURLConnection) url.openConnection();

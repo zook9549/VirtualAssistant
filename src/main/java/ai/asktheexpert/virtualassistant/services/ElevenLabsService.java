@@ -1,7 +1,6 @@
 package ai.asktheexpert.virtualassistant.services;
 
 import ai.asktheexpert.virtualassistant.models.Assistant;
-import ai.asktheexpert.virtualassistant.repositories.FileStore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,8 +14,9 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 
-import java.io.IOException;
-import java.util.*;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
 
 @Service
 // @CacheConfig(cacheManager = "fileStoreCacheManager")
@@ -42,7 +42,7 @@ public class ElevenLabsService implements TextToSpeechService {
 
         Map<String, Object> payload = new HashMap<>();
         payload.put("text", text);
-        payload.put("model_id", "eleven_multilingual_v2");
+        payload.put("model_id", "eleven_turbo_v2"); //eleven_multilingual_v2
         payload.put("voice_settings", config);
         String jsonRequest = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(payload);
 
