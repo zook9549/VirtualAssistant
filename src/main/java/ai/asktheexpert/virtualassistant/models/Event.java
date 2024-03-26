@@ -8,11 +8,18 @@ import java.time.LocalDateTime;
 @Getter
 @Setter
 @NoArgsConstructor
-@EqualsAndHashCode
+@EqualsAndHashCode(of = {"camera", "eventId"})
 public class Event {
+
     private Camera camera;
     private String eventId;
     private LocalDateTime eventDateTime;
     private String videoUrl;
     private String narration;
+    private Status status;
+
+    public enum Status {
+        IN_PROGRESS,
+        DONE
+    }
 }

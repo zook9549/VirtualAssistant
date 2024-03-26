@@ -7,19 +7,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.Cacheable;
-import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClientService;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
-import reactor.netty.http.client.HttpClient;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -29,22 +26,14 @@ import java.util.concurrent.Semaphore;
 @Service
 public class NestCameraService implements CameraService {
 
-    public NestCameraService(OAuth2AuthorizedClientService authorizedClientService, FileStore fileStore) {
+    public NestCameraService(WebClient nestWebClient, OAuth2AuthorizedClientService authorizedClientService, FileStore fileStore) {
+        this.webClient = nestWebClient;
         this.authorizedClientService = authorizedClientService;
         this.fileStore = fileStore;
     }
 
     @Cacheable(value = "stream")
     public String getStream(Camera camera, String id) throws IOException {
-        String accessToken = getAccessToken();
-        WebClient webClient = WebClient.builder()
-                .baseUrl("https://smartdevicemanagement.googleapis.com/v1")
-                .clientConnector(new ReactorClientHttpConnector(
-                        HttpClient.create()
-                                .responseTimeout(Duration.ofSeconds(60))
-                ))
-                .build();
-
         Map<String, String> params = new HashMap<>();
         params.put("command", "sdm.devices.commands.CameraLiveStream.GenerateRtspStream");
 
@@ -52,7 +41,6 @@ public class NestCameraService implements CameraService {
                 .uri("/" + camera.getId() + ":executeCommand")
                 .headers(headers -> {
                     {
-                        headers.setBearerAuth(accessToken);
                         headers.set("command", "sdm.devices.commands.CameraLiveStream.GenerateRtspStream");
                     }
                 })
@@ -71,13 +59,8 @@ public class NestCameraService implements CameraService {
     @Cacheable(value = "cameras")
     public List<Camera> getCameras() {
         List<Camera> results = new ArrayList<>();
-        String accessToken = getAccessToken();
-        WebClient webClient = WebClient.builder()
-                .baseUrl("https://smartdevicemanagement.googleapis.com/v1")
-                .build();
         JsonNode jsonNode = webClient.get()
                 .uri("/enterprises/{project_id}/devices", projectId)
-                .headers(headers -> headers.setBearerAuth(accessToken))
                 .retrieve()
                 .bodyToMono(JsonNode.class)
                 .block();
@@ -192,6 +175,9 @@ public class NestCameraService implements CameraService {
 
             int exitCode = process.waitFor();
             log.debug("FFMPEG exited with code: " + exitCode);
+            if (exitCode != 0) {
+                throw new RuntimeException("Unable to process video due to unexpected exit code " + exitCode);
+            }
         } catch (IOException | InterruptedException e) {
             throw new RuntimeException("Error occurred while generating video from livestream", e);
         } finally {
@@ -199,6 +185,7 @@ public class NestCameraService implements CameraService {
         }
     }
 
+    private final WebClient webClient;
     private final OAuth2AuthorizedClientService authorizedClientService;
     private final FileStore fileStore;
 

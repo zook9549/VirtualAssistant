@@ -27,11 +27,13 @@ import org.springframework.security.oauth2.client.annotation.RegisteredOAuth2Aut
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.client.web.DefaultOAuth2AuthorizedClientManager;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizedClientRepository;
+import org.springframework.security.oauth2.client.web.reactive.function.client.ServletOAuth2AuthorizedClientExchangeFilterFunction;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.reactive.function.client.WebClient;
 
 import java.net.URL;
 import java.time.Instant;
@@ -217,7 +219,7 @@ public class VirtualAssistantApplication {
             if (assistant.getIdleVideo() == null) {
                 String idleVideoUrl = null;
                 String person = assistant.getAssistantId();
-                if (!fileStore.exists(assistant.getName(), FileStore.MediaType.MP4)) {
+                if (!fileStore.exists(person, FileStore.MediaType.MP4)) {
                     log.debug("Creating idle video for {}", person);
                     byte[] video = avatarService.getVideo(assistant, "<break time=\"20000ms\"/>");
                     idleVideoUrl = fileStore.save(video, person, FileStore.MediaType.MP4);
@@ -333,7 +335,7 @@ public class VirtualAssistantApplication {
     }
 
     private boolean isPersonaAvailableToAnimate(Assistant assistant) {
-        return fileStore.exists(assistant.getName(), FileStore.MediaType.JPG);
+        return fileStore.exists(assistant.getAssistantId(), FileStore.MediaType.JPG);
     }
 
     @PostConstruct
@@ -364,17 +366,24 @@ public class VirtualAssistantApplication {
                     log.debug("Processing event for camera: {}", camera);
                     Event event = new Event();
                     event.setCamera(camera);
-                    event.setEventDateTime(now);
                     event.setEventId(bufferedTime);
-                    String url = cameraService.getStream(camera, event.getEventId());
-                    if (url != null) {
-                        event.setVideoUrl(url);
-                        String narration = answerService.narrate(event);
-                        event.setNarration(narration);
-                        eventService.save(event);
-                        log.info("Completed processing event: {}", event);
-                    } else {
-                        log.debug("Unable to create stream for camera {}", camera);
+                    event.setEventDateTime(now);
+                    event.setStatus(Event.Status.IN_PROGRESS);
+                    try {
+                        String url = cameraService.getStream(camera, event.getEventId());
+                        if (url != null) {
+                            event.setVideoUrl(url);
+                            String narration = answerService.narrate(event);
+                            event.setNarration(narration);
+                            event.setStatus(Event.Status.DONE);
+                            eventService.save(event);
+                            log.info("Completed processing event: {}", event);
+                        } else {
+                            log.debug("Unable to create stream for camera {}", camera);
+                        }
+                    } catch(Exception ex) {
+                        eventService.delete(event);
+                        throw ex;
                     }
                     return event;
                 }
@@ -435,25 +444,6 @@ public class VirtualAssistantApplication {
             log.info("Unable to process event", ex);
         }
         return new ResponseEntity<>(HttpStatus.OK);
-    }
-
-    @Bean
-    public OAuth2AuthorizedClientManager authorizedClientManager(
-            ClientRegistrationRepository clientRegistrationRepository,
-            OAuth2AuthorizedClientRepository authorizedClientRepository) {
-
-        OAuth2AuthorizedClientProvider authorizedClientProvider =
-                OAuth2AuthorizedClientProviderBuilder.builder()
-                        .authorizationCode()
-                        .refreshToken()
-                        .build();
-
-        DefaultOAuth2AuthorizedClientManager authorizedClientManager =
-                new DefaultOAuth2AuthorizedClientManager(
-                        clientRegistrationRepository, authorizedClientRepository);
-        authorizedClientManager.setAuthorizedClientProvider(authorizedClientProvider);
-
-        return authorizedClientManager;
     }
 
     @Value("${starting.prompt}")

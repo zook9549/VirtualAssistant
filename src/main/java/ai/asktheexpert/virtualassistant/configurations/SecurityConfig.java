@@ -31,6 +31,7 @@ public class SecurityConfig {
                 .anyRequest().permitAll()
                 .and()
                 .oauth2Login();
+        http.csrf(AbstractHttpConfigurer::disable);
         return http.build();
     }
 }

@@ -20,6 +20,10 @@ public class EventService {
         events.add(event);
     }
 
+    public boolean delete(Event event) {
+        return events.remove(event);
+    }
+
     public Event getEvent(String cameraId, String eventId) {
         Optional<Event> result = events.stream()
                 .filter(obj -> obj.getCamera().getId().equals(cameraId) && obj.getEventId().equals(eventId))
