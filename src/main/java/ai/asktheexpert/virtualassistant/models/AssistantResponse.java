@@ -17,6 +17,7 @@ public class AssistantResponse {
     private String videoUrl;
     private String messageId;
     private String threadId;
+    @EqualsAndHashCode.Exclude
     private Event trigger;
     @EqualsAndHashCode.Exclude
     @ToString.Exclude

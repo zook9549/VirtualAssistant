@@ -6,12 +6,15 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLConnection;
+import java.util.List;
 import java.util.Map;
 
 public interface FileStore {
     String cache(byte[] contents, String name, MediaType mediaType, Object... params) throws IOException;
 
     String save(byte[] contents, String name, MediaType mediaType, Object... params) throws IOException;
+
+    List<String> list(String prefix, MediaType mediaType);
 
     byte[] get(String name, MediaType mediaType, Object... params) throws IOException;
 

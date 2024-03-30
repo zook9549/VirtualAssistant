@@ -33,6 +33,7 @@ public class Assistant {
     private Moods currentMood;
     @EqualsAndHashCode.Exclude
     @JsonIgnore
+    @ToString.Exclude
     private LinkedHashMap<String, List<AssistantResponse>> threads = new LinkedHashMap<>();
     @EqualsAndHashCode.Exclude
     private String lastRunId;

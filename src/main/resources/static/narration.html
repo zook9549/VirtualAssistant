@@ -13,10 +13,30 @@
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 
     <style>
-        #mood, #person {
-            font-size: xxx-large;
-            width: 400px;
+        .grid-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr .5fr;
+            gap: 10px;
+            padding: 10px;
+            margin: auto;
         }
+        .grid-item {
+            background-color: #f0f0f0;
+            padding: 15px;
+            text-align: center;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .grid-header {
+            background-color: #7459fe;
+            color: white;
+            font-weight: bold;
+            padding: 15px;
+            text-align: center;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
 
         body * {
             font-family: 'Mulish', sans-serif;
@@ -95,13 +115,11 @@
 
         #narrated-video {
             border-radius: 0;
-            display: none;
         }
 
         video {
-            max-height: 600px;
-            max-width: 600px;
-            height: 50vh;
+            max-height: 1000px;
+            height: 70vh;
             object-fit: cover;
             border-radius: 50%;
             overflow: hidden;
@@ -120,52 +138,24 @@
 
         let base64String;
         let queuedVideo;
-        let startingVideos = new Map();
-        let startingVideosIndex = new Map();
-        let introVideos = new Map();
-        let introVideosIndex = new Map();
-        let introduced = new Map();
-        let idleVideo = new Map();
         let fetchingAnswer = false;
 
         document.addEventListener("DOMContentLoaded", function () {
-            const personaFetch = fetch(`./listAssistants`, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-            })
-                .then(response => response.json())
-                .then(data => setPersonas(data));
-
-            const moodFetch = fetch(`./listMoods`, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-            })
-                .then(response => response.json())
-                .then(data => setMoods(data));
 
             const eventsFetch = getEvents();
 
 
-            Promise.all([personaFetch, moodFetch, eventsFetch])
-                .then(([personasData, moodsData, eventsData]) => {
-                    setFormField('person');
-                    setFormField('mood');
-                    playIdleVideo();
-                    if (getUrlParameter('person') != '') {
-                       // talkToMe();
+            Promise.all([eventsFetch])
+                .then(([eventsData]) => {
+                    setFormField('eventId');
+                    setFormField('cameraId');
+                    if (getUrlParameter('eventId') != null) {
+                        event(getUrlParameter('cameraId'), getUrlParameter('eventId'))
                     }
                 })
                 .catch(error => {
                     console.error(error);
                 });
-
-            document.getElementById('talk-video2').addEventListener('ended', transitionVideo, false);
-            document.getElementById('talk-video2').addEventListener('error', playIdleVideo, false);
-            document.getElementById('person').addEventListener('change', introPersona, false);
             setInterval(getEvents, 60000);
 
         });
@@ -182,47 +172,7 @@
             return eventsFetch;
         }
 
-        function introPersona() {
-            let name = document.getElementById('person').value;
-            if (!introduced.get(name) && !fetchingAnswer) {
-                let introVideoIndex = introVideosIndex.get(name);
-                let videoName = introVideos.get(name)[introVideoIndex];
-                if (introVideoIndex >= introVideos.get(name).length - 1) {
-                    introVideosIndex.set(name, 0);
-                } else {
-                    introVideosIndex.set(name, introVideoIndex + 1);
-                }
-                playVideo(videoName);
-                introduced.set(name, true);
-            }
-        }
-
         function playIdleVideo() {
-            console.log("Playing idle video");
-            let person = document.getElementById('person').value;
-            let talkVideo = document.getElementById(person + "-video");
-
-            talkVideo.style.display = "inline-flex";
-            hideVideo(talkVideo);
-            talkVideo.src = idleVideo.get(person);
-            talkVideo.load();
-            talkVideo.loop = true;
-        }
-
-        function transitionVideo() {
-            let person = document.getElementById('person').value;
-            let video2 = document.getElementById('talk-video2');
-            if (queuedVideo != null && video2.src != queuedVideo) {
-                console.log("Playing queued up video: " + queuedVideo)
-                playVideo(queuedVideo);
-            } else {
-                console.log("Transitioning to idle video");
-                document.getElementById('talk-video2').pause();
-                document.getElementById(person + "-video").style.display = "inline-flex";
-                document.getElementById('talk-video2').style.display = "none";
-                playIdleVideo();
-                queuedVideo = null;
-            }
         }
 
         function parseResponse(data) {
@@ -236,7 +186,7 @@
                     playAudio();
                 }
                 let src = data.trigger.videoUrl;
-                if(src != null) {
+                if (src != null) {
                     let videoElement = document.getElementById('narrated-video');
                     if (videoElement.src != "" || src != null) {
                         videoElement.style.display = "inline-flex";
@@ -271,6 +221,7 @@
                 let audioElement = document.getElementById('audioAnswer');
                 audioElement.src = base64String;
                 mediaBar.style.visibility = "visible";
+                audioElement.play();
             }
         }
 
@@ -298,6 +249,7 @@
             }
             videoElement.loop = false;
         }
+
         function playAfterBuffered(video) {
             if (video.readyState >= 3) {
                 video.play()
@@ -307,74 +259,14 @@
                         playIdleVideo();
                     });
             } else {
-                setTimeout(function() {
+                setTimeout(function () {
                     playAfterBuffered(video);
                 }, 100);
             }
         }
 
-        function loadVideo(person) {
-            const video = document.createElement('video');
-            video.id = person + "-video";
-            video.autoplay = true;
-            video.muted = true;
-            video.playsInline = true;
-            video.style.display = "none";
-            video.addEventListener('ended', playIdleVideo, false);
-            video.addEventListener('click', function () {
-                playVideo();
-            });
-
-            const source = document.createElement('source');
-            source.src = idleVideo.get(person);
-            video.src = idleVideo.get(person);
-            source.type = 'video/mp4';
-
-            video.appendChild(source);
-
-            const container = document.getElementById('video-container');
-            container.appendChild(video);
-        }
-
-        function hideVideo(excluded) {
-            const videos = document.querySelectorAll('video');
-            videos.forEach((video) => {
-                if (excluded == null || (video.id !== excluded.id && video.id != "narrated-video")) {
-                    video.style.display = 'none';
-                }
-            });
-        }
-
         function isVideoPlaying(video) {
             return !video.paused && !video.ended && video.currentTime > 0;
-        }
-
-        function setPersonas(data) {
-            let select = document.getElementById('person');
-            for (let i = 0; i < data.length; i++) {
-                let option = document.createElement('option');
-                let assistantId = data[i].assistantId;
-                option.value = assistantId
-                option.text = data[i].name;
-                select.appendChild(option);
-                startingVideosIndex.set(assistantId, 0);
-                introVideosIndex.set(assistantId, 0);
-                startingVideos.set(assistantId, shuffle(data[i].startingVideos));
-                introVideos.set(assistantId, shuffle(data[i].introVideos));
-                introduced.set(assistantId, false);
-                idleVideo.set(assistantId, data[i].idleVideo);
-                loadVideo(assistantId);
-            }
-        }
-
-        function setMoods(data) {
-            let select = document.getElementById('mood');
-            for (let i = 0; i < data.length; i++) {
-                var option = document.createElement('option');
-                option.value = data[i];
-                option.text = data[i];
-                select.appendChild(option);
-            }
         }
 
         function setEvents(data) {
@@ -387,19 +279,27 @@
                 }
                 return 0;
             });
-            const eventGrid = document.getElementById('event-list');
-            const allElements = eventGrid.querySelectorAll("a");
+            const grid = document.getElementById('grid');
+            const allElements = grid.querySelectorAll("a");
             const ids = []
             for (const element of allElements) {
                 ids.push(element.id);
             }
-            eventGrid.innerHTML = "";
+            grid.innerHTML = "";
             var latestLinkElement = "";
+
+            // Create the header row
+            const headerRow = ['Camera Name', 'Event Date', ''];
+            headerRow.forEach(header => {
+                const headerCell = document.createElement("div");
+                headerCell.className = "grid-header";
+                headerCell.textContent = header;
+                grid.appendChild(headerCell);
+            });
+
             data.forEach(event => {
-                const listElement = document.createElement('li');
-                const linkElement = document.createElement('a');
-                linkElement.id = event.camera.id + event.eventId;
-                linkElement.href = "javascript:event('" + event.camera.id + "','" + event.eventId + "','" + event.camera.type + "')";
+                const linkId = event.camera.id + event.eventId;
+                const linkHref = "javascript:event('" + event.camera.id + "','" + event.eventId + "')";
 
                 const date = new Date(event.eventDateTime);
                 const year = date.getFullYear();
@@ -407,38 +307,54 @@
                 const day = String(date.getDate()).padStart(2, '0');
                 const hours = date.getHours() % 12 || 12; // Convert to 12-hour format, with 12 as noon and midnight
                 const minutes = String(date.getMinutes()).padStart(2, '0');
-                const seconds = String(date.getSeconds()).padStart(2, '0');
                 const ampm = date.getHours() >= 12 ? 'PM' : 'AM'; // Determine AM or PM
 
                 const formattedDate = `${year}-${month}-${day}`;
-                const formattedTime = `${hours}:${minutes} ${ampm}`;
-                linkElement.textContent = "[" + event.camera.name + "]  " + formattedDate + " " + formattedTime;
-                listElement.appendChild(linkElement);
-                eventGrid.appendChild(listElement);
-                if(ids.length > 0 && !ids.includes(linkElement.id) && latestLinkElement == "") {
-                    latestLinkElement = linkElement;
+                const formattedTime = `${hours}:${minutes}${ampm}`;
+                const formattedDateTime = `${formattedDate} ${formattedTime}`;
+
+                // Create a cell for the camera name
+                const nameCell = document.createElement("div");
+                nameCell.className = "grid-item";
+                nameCell.textContent = event.camera.name;
+                grid.appendChild(nameCell);
+
+                // Create a cell for the event date
+                const dateCell = document.createElement("div");
+                dateCell.className = "grid-item";
+                dateCell.textContent = formattedDateTime;
+                grid.appendChild(dateCell);
+
+                // Create a cell for the video link
+                const linkCell = document.createElement("div");
+                linkCell.className = "grid-item";
+                linkCell.innerHTML = `<a id="${linkId}" href="${linkHref}">Play</a>`;
+                grid.appendChild(linkCell);
+
+                if (ids.length > 0 && !ids.includes(linkId) && (latestLinkElement == null || latestLinkElement == "")) {
+                    latestLinkElement = document.getElementById(linkId);
                 }
+
             });
-            if(latestLinkElement != "") {
+            if (latestLinkElement != null && latestLinkElement != "") {
+                console.log("Latest is " + latestLinkElement)
                 latestLinkElement.click();
             }
         }
 
+        function setFormField(name) {
+            console.log("Setting " + name + " to " + getUrlParameter(name));
+            let priorVal = document.getElementById(name).value;
+            document.getElementById(name).value = getUrlParameter(name) || priorVal;
+        }
 
-        function event(cameraId, eventId, cameraType) {
-            let name = document.getElementById('person').value;
+        function event(cameraId, eventId) {
             document.getElementById('mediaBar').style.visibility = "hidden";
-            let startingVideoIndex = startingVideosIndex.get(name);
-            let videoName = startingVideos.get(name)[startingVideoIndex];
-            if (startingVideoIndex >= startingVideos.get(name).length - 1) {
-                startingVideosIndex.set(name, 0);
-            } else {
-                startingVideosIndex.set(name, startingVideoIndex + 1);
-            }
-            playVideo(videoName);
             fetchingAnswer = true;
             document.getElementById('answer').innerText = "Generating response...";
-            questionUrl = "./narrate?assistantId=" + document.getElementById('person').value + "&mood=" + document.getElementById('mood').value + "&cameraId=" + encodeURIComponent(cameraId) + "&eventId=" + encodeURIComponent(eventId)+ "&cameraType=" + encodeURIComponent(cameraType);
+            document.getElementById('cameraId').value = cameraId;
+            document.getElementById('eventId').value = eventId;
+            questionUrl = "./narrate?audioOnly=true&assistantId=asst_CXxwcp1WpNvzFE4UwSFS4AiL&mood=Confidence&cameraId=" + encodeURIComponent(cameraId) + "&eventId=" + encodeURIComponent(eventId);
             fetch(questionUrl, {
                 method: 'GET',
                 headers: {
@@ -459,27 +375,13 @@
             document.body.removeChild(a);
         }
 
-        function shuffle(array) {
-            for (let i = array.length - 1; i > 0; i--) {
-                let j = Math.floor(Math.random() * (i + 1));
-                [array[i], array[j]] = [array[j], array[i]];
-            }
-            return array;
-        }
-
         function getUrlParameter(name) {
             const urlParams = new URLSearchParams(window.location.search);
             return urlParams.get(name);
         }
 
-        function setFormField(name) {
-            console.log("Setting " + name + " to " + getUrlParameter(name));
-            let priorVal = document.getElementById(name).value;
-            document.getElementById(name).value = getUrlParameter(name) || priorVal;
-        }
-
         function updateURL() {
-            const queryParams = "person=" + document.getElementById('person').value + "&mood=" + document.getElementById('mood').value;
+            const queryParams = "eventId=" + document.getElementById('eventId').value + "&cameraId=" + document.getElementById('cameraId').value;
             history.replaceState(null, '', '?' + queryParams);
         }
 
@@ -488,34 +390,13 @@
 <body>
 <div id="content">
     <form id="talkForm">
+        <input type="hidden" name="eventId" id="eventId"/>
+        <input type="hidden" name="cameraId" id="cameraId"/>
         <div id="video-wrapper">
             <div id="narrated-video-container">
-                <video id="narrated-video" autoplay loop playsinline muted>
+                <video id="narrated-video" autoplay loop playsinline muted onclick="playAudio()">
                     <source src="" type="video/mp4">
                 </video>
-            </div>
-            <div id="video-container">
-                <video id="talk-video2" autoplay loop playsinline
-                       onclick="transitionVideo()">
-                    <source src="" type="video/mp4">
-                </video>
-            </div>
-        </div>
-        <br/>
-        <div>
-            <div>
-                <select id="mood">
-                    <options>
-                    </options>
-                </select>
-                <select id="person" onchange="playIdleVideo()">
-                    <options>
-                    </options>
-                </select>
-            </div>
-            <div class="textarea-container">
-                <ul id="event-list">
-                </ul>
             </div>
         </div>
         <br/>
@@ -528,6 +409,13 @@
                   title="Download the video">download</span>
         </div>
         <div id="answer"></div>
+        <br/>
+        <div>
+            <div id="grid" class="grid-container">
+                <ul id="event-list">
+                </ul>
+            </div>
+        </div>
     </form>
 </div>
 </body>

@@ -155,16 +155,6 @@ public class ChatGPTService implements AnswerService, AssistantService {
     }
 
     public String narrate(Event event) throws IOException {
-        WebClient webClient = WebClient.builder()
-                .baseUrl("https://api.openai.com/v1")
-                .clientConnector(new ReactorClientHttpConnector(
-                        HttpClient.create()
-                                .responseTimeout(Duration.ofSeconds(60))
-                ))
-                .defaultHeader("Authorization", "Bearer " + chatgptApiKey)
-                .defaultHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE)
-                .build();
-
         List<Map<String, Object>> conversation = new ArrayList<>();
         Map<String, Object> userMessage = new HashMap<>();
         userMessage.put("role", "user");
@@ -176,7 +166,7 @@ public class ChatGPTService implements AnswerService, AssistantService {
         prompt.put("text", narrationPrompt);
         content.add(prompt);
         byte[] video = fileStore.get(event.getCamera().getId(), FileStore.MediaType.MP4, event.getEventId());
-        List<BufferedImage> images = extractFrames(video, 5);
+        List<BufferedImage> images = extractFrames(video, 3);
         for (BufferedImage image : images) {
             try (ByteArrayOutputStream  outputStream = new ByteArrayOutputStream()) {
                 ImageIO.write(image, "jpg", outputStream);
@@ -184,11 +174,13 @@ public class ChatGPTService implements AnswerService, AssistantService {
                 imageInfo.put("type", "image_url");
                 Map<String, String> imageDetail = new HashMap<>();
                 String encodedString = Base64.getEncoder().encodeToString(outputStream.toByteArray());
+                log.debug("File is {} size", encodedString.length());
                 imageDetail.put("url", "data:image/png;base64," + encodedString);
                 imageInfo.put("image_url", imageDetail);
                 content.add(imageInfo);
             } catch (IOException e) {
-                log.warn("Unable to parse images from video", e);
+                log.warn("Unable to parse images from video. Skipping narration.");
+                throw e;
             }
         }
 
@@ -197,9 +189,18 @@ public class ChatGPTService implements AnswerService, AssistantService {
 
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("max_tokens", 500);
-        requestBody.put("temperature", 0.8);
         requestBody.put("model", "gpt-4-vision-preview");
         requestBody.put("messages", conversation);
+
+        WebClient webClient = WebClient.builder()
+                .baseUrl("https://api.openai.com/v1")
+                .clientConnector(new ReactorClientHttpConnector(
+                        HttpClient.create()
+                                .responseTimeout(Duration.ofSeconds(60))
+                ))
+                .defaultHeader("Authorization", "Bearer " + chatgptApiKey)
+                .defaultHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                .build();
 
         Map<String, Object> response = webClient.post()
                 .uri("/chat/completions")
@@ -210,6 +211,10 @@ public class ChatGPTService implements AnswerService, AssistantService {
 
         String answer = ((Map<?, ?>) ((Map<?, ?>) ((List<?>) response.get("choices")).get(0)).get("message")).get("content").toString();
         log.debug("Completed getting image prompt: {}", answer);
+        if(answer.length() < 100) {
+            log.debug("File URL: {}", fileStore.getUrl(event.getCamera().getId(), FileStore.MediaType.MP4, event.getEventId()));
+            throw new RuntimeException("Unable to process image analysis with answer " + answer);
+        }
         return answer;
     }
 
@@ -218,8 +223,12 @@ public class ChatGPTService implements AnswerService, AssistantService {
         RestTemplate restTemplate = new RestTemplate();
         HttpHeaders headers = createHeaders();
         Map<String, Object> metadata = new HashMap<>();
-        metadata.put("audioUrl", assistantResponse.getAudioUrl());
-        metadata.put("videoUrl", assistantResponse.getVideoUrl());
+        if(assistantResponse.getAudioUrl() != null) {
+            metadata.put("audioUrl", assistantResponse.getAudioUrl());
+        }
+        if(assistantResponse.getVideoUrl() != null) {
+            metadata.put("videoUrl", assistantResponse.getVideoUrl());
+        }
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("metadata", metadata);
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
@@ -354,7 +363,7 @@ public class ChatGPTService implements AnswerService, AssistantService {
         return assistant;
     }
 
-    public List<BufferedImage> extractFrames(byte[] videoBytes, int intervalInSeconds) {
+    public List<BufferedImage> extractFrames(byte[] videoBytes, int framesToExtract) {
         List<BufferedImage> images = new ArrayList<>();
         File tempFile = null;
         try {
@@ -363,17 +372,17 @@ public class ChatGPTService implements AnswerService, AssistantService {
                 fos.write(videoBytes);
             }
 
-            // Use the temporary file with JCodec
+            int frameOffset = 4;
             try (FileChannelWrapper ch = NIOUtils.readableChannel(tempFile)) {
                 FrameGrab grab = FrameGrab.createFrameGrab(ch);
-                int frameRate = (int) Math.round(grab.getVideoTrack().getMeta().getTotalFrames() / grab.getVideoTrack().getMeta().getTotalDuration());
+                int totalFrames = (grab.getVideoTrack().getMeta().getTotalFrames() - (frameOffset * 2));
+                int frameInterval = totalFrames / (framesToExtract > 1 ? framesToExtract-1 : framesToExtract);
 
                 Picture picture;
                 int frameNumber = 0;
-                int frameInterval = frameRate * intervalInSeconds; // Number of frames to skip
 
-                while ((picture = grab.getNativeFrame()) != null) {
-                    if (frameNumber % frameInterval == 0) {
+                while ((picture = grab.getNativeFrame()) != null && images.size() < framesToExtract) {
+                    if ((frameNumber > frameOffset && frameNumber % frameInterval == 0) || frameNumber == frameOffset) {
                         BufferedImage image = AWTUtil.toBufferedImage(picture);
                         images.add(image);
                     }

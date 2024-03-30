@@ -15,10 +15,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 
 @Service
 public class S3FileStore implements FileStore {
@@ -40,7 +37,6 @@ public class S3FileStore implements FileStore {
         ));
         return path;
     }
-
 
     @Cacheable(value = "s3")
     public String save(byte[] contents, String name, MediaType mediaType, Object... params) throws IOException {
@@ -64,6 +60,26 @@ public class S3FileStore implements FileStore {
         }
     }
 
+    public List<String> list(String prefix, MediaType mediaType) {
+        List<String> files = new ArrayList<>();
+        ListObjectsRequest listObjectsRequest = new ListObjectsRequest()
+                .withBucketName(bucket)
+                .withPrefix(prefix);
+
+        ObjectListing objectListing;
+        do {
+            objectListing = amazonS3.listObjects(listObjectsRequest);
+            for (S3ObjectSummary objectSummary : objectListing.getObjectSummaries()) {
+                if (objectSummary.getKey().endsWith(mediaType.getExtension())) {
+                    files.add(((AmazonS3Client) amazonS3).getResourceUrl(bucket, objectSummary.getKey()));
+                }
+            }
+            listObjectsRequest.setMarker(objectListing.getNextMarker());
+        } while (objectListing.isTruncated());
+        return files;
+    }
+
+
     @Cacheable(value = "s3")
     public byte[] get(String name, MediaType mediaType, Object... params) throws IOException {
         String fileName = getFileName(name, mediaType, params);
@@ -81,7 +97,7 @@ public class S3FileStore implements FileStore {
     public String getUrl(String name, MediaType mediaType, Object... params) {
         String fileName = getFileName(name, mediaType, params);
         if (exists(fileName)) {
-            log.debug("Fetching file path: {}", fileName);
+            log.trace("Fetching file path: {}", fileName);
             return ((AmazonS3Client) amazonS3).getResourceUrl(bucket, fileName);
         } else {
             log.info("No external file path found: {}", fileName);
@@ -115,7 +131,7 @@ public class S3FileStore implements FileStore {
     public String getFileName(String name, MediaType mediaType, Object... params) {
         StringBuilder result = new StringBuilder();
         if (name != null && !name.isEmpty()) {
-            result.append(name.toLowerCase().replace(' ', '_').replace('/', '_'));
+            result.append(name.toLowerCase().replace(' ', '_'));
         }
         if (params != null && params.length > 0) {
             Object[] lowercaseStrings = new Object[params.length];

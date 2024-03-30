@@ -1,5 +1,7 @@
 package ai.asktheexpert.virtualassistant.configurations;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.reactive.ReactorClientHttpConnector;
@@ -49,6 +51,14 @@ public class AppConfig {
                 ))
                 .apply(oauth2FilterFunction.oauth2Configuration())
                 .build();
+    }
+
+
+    // @Bean
+    public ObjectMapper objectMapper() {
+        ObjectMapper objectMapper = new ObjectMapper();
+        objectMapper.registerModule(new JavaTimeModule());
+        return objectMapper;
     }
 
 }
