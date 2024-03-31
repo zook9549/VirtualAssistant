@@ -23,7 +23,10 @@ import reactor.netty.http.client.HttpClient;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
-import java.io.*;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.time.Duration;
 import java.util.*;
@@ -154,49 +157,88 @@ public class ChatGPTService implements AnswerService, AssistantService {
         return assistantResponse;
     }
 
-    public String narrate(Event event) throws IOException {
+    public String narrate(Event event, Assistant assistant) throws IOException {
+        byte[] cachedAnswer = fileStore.get(event.getCamera().getId(), FileStore.MediaType.TXT, event.getEventId());
+        if (cachedAnswer != null) {
+            return new String(cachedAnswer);
+        }
+
         List<Map<String, Object>> conversation = new ArrayList<>();
         Map<String, Object> userMessage = new HashMap<>();
         userMessage.put("role", "user");
 
-        List<Map<String, Object>> content = new ArrayList<>();
-
-        Map<String, Object> prompt = new HashMap<>();
-        prompt.put("type", "text");
-        prompt.put("text", narrationPrompt);
-        content.add(prompt);
-        byte[] video = fileStore.get(event.getCamera().getId(), FileStore.MediaType.MP4, event.getEventId());
-        List<BufferedImage> images = extractFrames(video, 3);
-        for (BufferedImage image : images) {
-            try (ByteArrayOutputStream  outputStream = new ByteArrayOutputStream()) {
-                ImageIO.write(image, "jpg", outputStream);
-                Map<String, Object> imageInfo = new HashMap<>();
-                imageInfo.put("type", "image_url");
-                Map<String, String> imageDetail = new HashMap<>();
-                String encodedString = Base64.getEncoder().encodeToString(outputStream.toByteArray());
-                log.debug("File is {} size", encodedString.length());
-                imageDetail.put("url", "data:image/png;base64," + encodedString);
-                imageInfo.put("image_url", imageDetail);
-                content.add(imageInfo);
-            } catch (IOException e) {
-                log.warn("Unable to parse images from video. Skipping narration.");
-                throw e;
-            }
-        }
-
+        List<Map<String, Object>> content = prepareContent(event, assistant);
         userMessage.put("content", content);
         conversation.add(userMessage);
 
+        Map<String, Object> requestBody = prepareRequestBody(conversation);
+        String answer = getResponseFromApi(requestBody);
+
+        if (answer.length() < 100) {
+            log.debug("File: {}", fileStore.getFileName(event.getCamera().getId(), FileStore.MediaType.MP4, event.getEventId()));
+            throw new RuntimeException("Unable to process image analysis with answer " + answer);
+        }
+
+        if (!event.isTemporary()) {
+            fileStore.cache(answer.getBytes(), event.getCamera().getId(), FileStore.MediaType.TXT, event.getEventId());
+        }
+        log.debug("Narration completed with {}", answer);
+        return answer;
+    }
+
+    private List<Map<String, Object>> prepareContent(Event event, Assistant assistant) throws IOException {
+        List<Map<String, Object>> content = new ArrayList<>();
+        Map<String, Object> prompt = new HashMap<>();
+        prompt.put("type", "text");
+        String narrationPrompt = getNarrationPrompt(event, assistant);
+        log.debug("Narration prompt: {}", narrationPrompt);
+        prompt.put("text", narrationPrompt);
+        content.add(prompt);
+
+        if (event.getEncodedImages().isEmpty()) {
+            byte[] video = fileStore.get(event.getCamera().getId(), FileStore.MediaType.MP4, event.getEventId());
+            List<BufferedImage> images = extractFrames(video, 3);
+            for (BufferedImage image : images) {
+                String encodedImage = encodeImage(image);
+                event.getEncodedImages().add(encodedImage);
+            }
+        }
+
+        for (String encodedImage : event.getEncodedImages()) {
+            Map<String, Object> imageInfo = new HashMap<>();
+            imageInfo.put("type", "image_url");
+            Map<String, String> imageDetail = new HashMap<>();
+            imageDetail.put("url", "data:image/png;base64," + encodedImage);
+            imageInfo.put("image_url", imageDetail);
+            content.add(imageInfo);
+        }
+
+        return content;
+    }
+
+    private String encodeImage(BufferedImage image) throws IOException {
+        try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
+            ImageIO.write(image, "jpg", outputStream);
+            return Base64.getEncoder().encodeToString(outputStream.toByteArray());
+        } catch (IOException e) {
+            log.warn("Unable to encode image. Skipping narration.");
+            throw e;
+        }
+    }
+
+    private Map<String, Object> prepareRequestBody(List<Map<String, Object>> conversation) {
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("max_tokens", 500);
         requestBody.put("model", "gpt-4-vision-preview");
         requestBody.put("messages", conversation);
+        return requestBody;
+    }
 
+    private String getResponseFromApi(Map<String, Object> requestBody) {
         WebClient webClient = WebClient.builder()
                 .baseUrl("https://api.openai.com/v1")
                 .clientConnector(new ReactorClientHttpConnector(
-                        HttpClient.create()
-                                .responseTimeout(Duration.ofSeconds(60))
+                        HttpClient.create().responseTimeout(Duration.ofSeconds(60))
                 ))
                 .defaultHeader("Authorization", "Bearer " + chatgptApiKey)
                 .defaultHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE)
@@ -209,24 +251,17 @@ public class ChatGPTService implements AnswerService, AssistantService {
                 .bodyToMono(Map.class)
                 .block();
 
-        String answer = ((Map<?, ?>) ((Map<?, ?>) ((List<?>) response.get("choices")).get(0)).get("message")).get("content").toString();
-        log.debug("Completed getting image prompt: {}", answer);
-        if(answer.length() < 100) {
-            log.debug("File URL: {}", fileStore.getUrl(event.getCamera().getId(), FileStore.MediaType.MP4, event.getEventId()));
-            throw new RuntimeException("Unable to process image analysis with answer " + answer);
-        }
-        return answer;
+        return ((Map<?, ?>) ((Map<?, ?>) ((List<?>) response.get("choices")).get(0)).get("message")).get("content").toString();
     }
-
 
     public void save(AssistantResponse assistantResponse) {
         RestTemplate restTemplate = new RestTemplate();
         HttpHeaders headers = createHeaders();
         Map<String, Object> metadata = new HashMap<>();
-        if(assistantResponse.getAudioUrl() != null) {
+        if (assistantResponse.getAudioUrl() != null) {
             metadata.put("audioUrl", assistantResponse.getAudioUrl());
         }
-        if(assistantResponse.getVideoUrl() != null) {
+        if (assistantResponse.getVideoUrl() != null) {
             metadata.put("videoUrl", assistantResponse.getVideoUrl());
         }
         Map<String, Object> requestBody = new HashMap<>();
@@ -376,7 +411,7 @@ public class ChatGPTService implements AnswerService, AssistantService {
             try (FileChannelWrapper ch = NIOUtils.readableChannel(tempFile)) {
                 FrameGrab grab = FrameGrab.createFrameGrab(ch);
                 int totalFrames = (grab.getVideoTrack().getMeta().getTotalFrames() - (frameOffset * 2));
-                int frameInterval = totalFrames / (framesToExtract > 1 ? framesToExtract-1 : framesToExtract);
+                int frameInterval = totalFrames / (framesToExtract > 1 ? framesToExtract - 1 : framesToExtract);
 
                 Picture picture;
                 int frameNumber = 0;
@@ -399,6 +434,17 @@ public class ChatGPTService implements AnswerService, AssistantService {
         return images;
     }
 
+    private String getNarrationPrompt(Event event, Assistant assistant) {
+        String engineeredPrompt = "";
+        String context = cameraContext.get(event.getCamera().getId());
+        if (context == null) {
+            context = "";
+        }
+        if (assistant != null) {
+            engineeredPrompt = createEngineeredPrompt(assistant);
+        }
+        return narrationPrompt.replace("{context}", context).replace("{engineeredPrompt}", engineeredPrompt);
+    }
 
     @Value("${chatgpt.api.key}")
     private String chatgptApiKey;
@@ -406,6 +452,8 @@ public class ChatGPTService implements AnswerService, AssistantService {
     private String chatGptUrl;
     @Value("${narration.prompt}")
     private String narrationPrompt;
+    @Value("#{${camera.context}}")
+    private Map<String, String> cameraContext = new HashMap<>();
     private final FileStore fileStore;
 
     private static final Logger log = LoggerFactory.getLogger(ChatGPTService.class);

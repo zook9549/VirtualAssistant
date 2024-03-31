@@ -33,7 +33,7 @@ public interface FileStore {
     );
 
     enum MediaType {
-        MP4("mp4", "video/mp4"), MP3("mp3", "audio/mpeg"), JPG("jpg","image/jpeg");
+        MP4("mp4", "video/mp4"), MP3("mp3", "audio/mpeg"), JPG("jpg","image/jpeg"), TXT("txt","text/plain");
 
         private final String value;
         private final String extension;

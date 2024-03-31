@@ -20,10 +20,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
 import org.springframework.security.oauth2.client.annotation.RegisteredOAuth2AuthorizedClient;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.net.URL;
@@ -130,7 +127,10 @@ public class VirtualAssistantApplication {
 
     @PostMapping(value = "/addAssistant")
     private Assistant addAssistant(@RequestParam("assistantName") String assistantName, @RequestParam("role") String role,
-                                   @RequestParam(required = false, name = "audioSample") MultipartFile audioSample, @RequestParam(required = false, name = "voiceUpload") MultipartFile voiceUpload, @RequestParam("profilePicture") MultipartFile profilePicture) throws Exception {
+                                   @RequestParam(required = false, name = "audioSample") MultipartFile audioSample,
+                                   @RequestParam(required = false, name = "voiceUpload") MultipartFile voiceUpload,
+                                   @RequestParam("profilePicture") MultipartFile profilePicture,
+                                   @RequestParam(required = false) String voiceId) throws Exception {
         String name = assistantName.trim();
         log.debug("Adding assistant {}", name);
 
@@ -141,14 +141,16 @@ public class VirtualAssistantApplication {
         assistant.setAvatarId(assistant.getName().toLowerCase());
         assistantService.save(assistant);
 
-        byte[] audio;
-        if (audioSample != null && !audioSample.isEmpty()) {
-            audio = audioSample.getBytes();
-        } else {
-            audio = voiceUpload.getBytes();
+        if (voiceId == null) {
+            byte[] audio;
+            if (audioSample != null && !audioSample.isEmpty()) {
+                audio = audioSample.getBytes();
+            } else {
+                audio = voiceUpload.getBytes();
+            }
+            voiceId = textToSpeechService.save(assistant.getAssistantId(), role, audio);
         }
         String profilePicUrl = fileStore.save(profilePicture.getBytes(), assistant.getAssistantId(), FileStore.MediaType.JPG);
-        String voiceId = textToSpeechService.save(assistant.getAssistantId(), role, audio);
         assistant.setVoiceId(voiceId);
         assistant.setProfilePicture(profilePicUrl);
         assistantService.update(assistant);
@@ -365,7 +367,7 @@ public class VirtualAssistantApplication {
                         String url = getCameraService(camera.getType()).getStream(camera, event.getEventId());
                         if (url != null) {
                             event.setVideoUrl(url);
-                            String narration = answerService.narrate(event);
+                            String narration = answerService.narrate(event, null);
                             event.setNarration(narration);
                             event.setStatus(Event.Status.DONE);
                             eventService.save(event);
@@ -398,8 +400,13 @@ public class VirtualAssistantApplication {
     }
 
     @RequestMapping(value = "/events", produces = "application/json")
-    public List<Event> getEvents() {
+    public Collection<Event> getEvents() {
         return eventService.getAllEvents();
+    }
+
+    @RequestMapping(value = "/blinkEvents", produces = "application/json")
+    public Collection<Event> getBlinkEvents() throws Exception {
+        return blinkCameraService.getEvents();
     }
 
     @RequestMapping(value = "/narrate", produces = "application/json")
@@ -413,6 +420,40 @@ public class VirtualAssistantApplication {
             log.debug("Event no longer exists: {}", eventId);
             return null;
         }
+    }
+
+    @RequestMapping(value = "/realtime", produces = "application/json")
+    public String narrateRealTime(String assistantId, @RequestParam(required = false) Moods mood, @RequestBody Map<String, List<String>> imagesData, @RequestParam(required = false) boolean useAssistant) throws Exception {
+        List<String> images = imagesData.get("images");
+        images.replaceAll(s -> s.replaceAll("data:image/png;base64,", ""));
+        if (images != null && images.size() >= 3) {
+            Camera camera = new Camera();
+            String cameraId = useAssistant ? "webcam/assistant" : "webcam/narrate";
+            camera.setId(cameraId);
+            camera.setType("web");
+            Event event = new Event();
+            LocalDateTime now = LocalDateTime.now();
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd:HH:mm");
+            event.setEventId(now.format(formatter));
+            event.setCamera(camera);
+            event.setEncodedImages(images);
+            event.setTemporary(true);
+            Assistant assistant = null;
+            if (!useAssistant) {
+                assistant = availableAssistants.get(assistantId);
+                assistant.setCurrentMood(mood);
+            }
+            String narration = answerService.narrate(event, assistant);
+            event.setNarration(narration);
+            event.setStatus(Event.Status.DONE);
+            if (useAssistant) {
+                AssistantResponse response = getAnswer(narrationAssistant + " {" + event.getNarration() + "}", assistantId, mood, true);
+                return response.getAudioUrl();
+            } else {
+                return getTextToSpeech(assistantId, narration);
+            }
+        }
+        return null;
     }
 
     @RequestMapping(value = "/pubsub/event")

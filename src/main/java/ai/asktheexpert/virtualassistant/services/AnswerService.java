@@ -11,5 +11,5 @@ public interface AnswerService {
 
     void save(AssistantResponse assistantResponse);
 
-    String narrate(Event event) throws IOException;
+    String narrate(Event event, Assistant assistant) throws IOException;
 }

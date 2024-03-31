@@ -3,7 +3,7 @@ package ai.asktheexpert.virtualassistant.models;
 import java.util.Random;
 
 public enum Moods {
-    Confidence, Sarcastic, Happiness, Sadness, Anger, Fear, Surprise, Disgust, Enthusiasm, Anticipation, Regret,  Hope, Pride, Empathy, Gratitude, Love, Guilt, Curiosity, Clarity, Amazement, Disappointment;
+    Confidence, Sarcastic, Funny, Happiness, Sadness, Anger, Fear, Surprise, Disgust, Enthusiasm, Anticipation, Regret,  Hope, Pride, Empathy, Gratitude, Love, Guilt, Curiosity, Clarity, Amazement, Disappointment;
 
     public static Moods getRandomMood() {
         return getRandomMood(Moods.values());

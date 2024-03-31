@@ -52,6 +52,7 @@ public class BlinkCameraService implements CameraService {
             String url = MessageFormat.format(videosUrl, account.getRegion(), account.getAccountId(), "1970-01-01T00:00:00+0000", page);
             ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.GET, entity, Map.class);
             Collection<Map> mediaResults = (Collection) response.getBody().get("media");
+            log.debug("Found {} results from Blink", mediaResults.size());
             for (Map map : mediaResults) {
                 String cameraId = map.get("device_id").toString();
                 Camera selectedCamera = cameras.stream().filter(camera -> camera.getId().equals("blink/" + cameraId)).findFirst().get();
@@ -61,20 +62,21 @@ public class BlinkCameraService implements CameraService {
                 event.setEventDateTime(ZonedDateTime.parse(map.get("created_at").toString(), DateTimeFormatter.ISO_OFFSET_DATE_TIME).withZoneSameInstant(ZoneId.systemDefault()).toLocalDateTime());
                 event.setCamera(selectedCamera);
                 String medialUrl = fileStore.getUrl(event.getCamera().getId(), FileStore.MediaType.MP4, event.getEventId());
-                if (medialUrl == null) {
-                    try {
+                try {
+                    if (medialUrl == null) {
                         String videoUrl = fileStore.save(getVideo(account, mediaUrl), event.getCamera().getId(), FileStore.MediaType.MP4, event.getEventId());
                         event.setVideoUrl(videoUrl);
-                        String narration = answerService.narrate(event);
-                        event.setNarration(narration);
-                        event.setStatus(Event.Status.DONE);
-                        eventService.save(event);
-                        results.add(event);
-                    } catch (Exception ex) {
-                        log.error("Unable to retrieve media file " + mediaUrl, ex);
+                    } else {
+                        log.debug("Existing file found at {}", medialUrl);
+                        event.setVideoUrl(medialUrl);
                     }
-                } else {
-                    log.debug("Existing file found at {}", medialUrl);
+                    String narration = answerService.narrate(event, null);
+                    event.setNarration(narration);
+                    event.setStatus(Event.Status.DONE);
+                    eventService.save(event);
+                    results.add(event);
+                } catch (Exception ex) {
+                    log.error("Unable to retrieve media file " + mediaUrl, ex);
                 }
             }
             int limit = Integer.parseInt(response.getBody().get("limit").toString());
@@ -95,8 +97,8 @@ public class BlinkCameraService implements CameraService {
         HttpHeaders headers = new HttpHeaders();
         headers.add("token-auth", account.getAuthToken());
         HttpEntity<String> entity = new HttpEntity<>(jsonRequest, headers);
-        String parsedId = camera.getId().replace(camera.getType() + "/" ,"");
-        String videoUrl = MessageFormat.format(liveStreamUrl,  account.getRegion(), account.getAccountId(), camera.getNetworkId(), parsedId);
+        String parsedId = camera.getId().replace(camera.getType() + "/", "");
+        String videoUrl = MessageFormat.format(liveStreamUrl, account.getRegion(), account.getAccountId(), camera.getNetworkId(), parsedId);
 
         ResponseEntity<Map> response = restTemplate.exchange(videoUrl, HttpMethod.POST, entity, Map.class);
         String streamUrl = response.getBody().get("server").toString();
@@ -109,25 +111,26 @@ public class BlinkCameraService implements CameraService {
     @Override
     @Cacheable(value = "blinkCameras")
     public List<Camera> getCameras() {
-        List<Camera> cameras = new ArrayList<>();
-        Account account = getAccount();
-        RestTemplate restTemplate = new RestTemplate();
-        HttpHeaders headers = new HttpHeaders();
-        headers.add("token-auth", account.getAuthToken());
-        HttpEntity<String> entity = new HttpEntity<>("parameters", headers);
-        String videoUrl = MessageFormat.format(homeScreenUrl, account.getRegion(), account.getAccountId());
-        ResponseEntity<Map> response = restTemplate.exchange(videoUrl, HttpMethod.GET, entity, Map.class);
-        List<Map<String, Object>> cameraList = (List<Map<String, Object>>) response.getBody().get("cameras");
-        for (Map<String, Object> cameraMap : cameraList) {
-            if (cameraMap.get("status").equals("done")) {
-                Camera camera = new Camera();
-                camera.setType("blink");
-                camera.setStreamable(true);
-                camera.getAvailableProtocols().add(Camera.Protocol.RTSP);
-                camera.setId(camera.getType() + "/" + cameraMap.get("id").toString());
-                camera.setName(cameraMap.get("name").toString());
-                camera.setNetworkId(cameraMap.get("network_id").toString());
-                cameras.add(camera);
+        if (cameras.isEmpty()) {
+            Account account = getAccount();
+            RestTemplate restTemplate = new RestTemplate();
+            HttpHeaders headers = new HttpHeaders();
+            headers.add("token-auth", account.getAuthToken());
+            HttpEntity<String> entity = new HttpEntity<>("parameters", headers);
+            String videoUrl = MessageFormat.format(homeScreenUrl, account.getRegion(), account.getAccountId());
+            ResponseEntity<Map> response = restTemplate.exchange(videoUrl, HttpMethod.GET, entity, Map.class);
+            List<Map<String, Object>> cameraList = (List<Map<String, Object>>) response.getBody().get("cameras");
+            for (Map<String, Object> cameraMap : cameraList) {
+                if (cameraMap.get("status").equals("done")) {
+                    Camera camera = new Camera();
+                    camera.setType("blink");
+                    camera.setStreamable(true);
+                    camera.getAvailableProtocols().add(Camera.Protocol.RTSP);
+                    camera.setId(camera.getType() + "/" + cameraMap.get("id").toString());
+                    camera.setName(cameraMap.get("name").toString());
+                    camera.setNetworkId(cameraMap.get("network_id").toString());
+                    cameras.add(camera);
+                }
             }
         }
         return cameras;
@@ -189,7 +192,7 @@ public class BlinkCameraService implements CameraService {
     private String liveStreamUrl;
     @Value("${blink.uuid}")
     private String uuid;
-
+    private final List<Camera> cameras = new ArrayList<>();
 
     private static final Logger log = LoggerFactory.getLogger(BlinkCameraService.class);
 }

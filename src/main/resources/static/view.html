@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Wild Kingdom</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #f5f5f5;
+            margin: 20px;
+        }
+
+        #video, #canvas {
+            max-width: 100%;
+            height: auto;
+            border: 2px solid #ccc;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+
+        h2 {
+            color: #333;
+            margin: 20px 0;
+        }
+
+        #cameraList, #toggleCapture, select {
+            font-size: 16px;
+            padding: 10px 20px;
+            margin: 10px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            background-color: #fff;
+            cursor: pointer;
+        }
+
+        #toggleCapture {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            transition: background-color 0.3s ease;
+        }
+
+        #toggleCapture:hover {
+            background-color: #45a049;
+        }
+
+        #audioPlayer {
+            width: 300px;
+        }
+
+        #photos {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        #photos img {
+            width: 200px; /* Adjust as needed */
+            height: auto;
+            border-radius: 5px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        .highlight {
+            border: 4px solid #ffeb3b; /* Yellow border */
+            transition: border-color 0.5s ease-in-out; /* Smooth transition */
+        }
+    </style>
+
+</head>
+<body>
+
+<video id="video" width="640" height="480" autoplay></video>
+<br/>
+<audio id="audioPlayer" controls></audio>
+
+<div>
+    <select id="mood" onchange="updateURL()">
+        <options>
+        </options>
+    </select>
+    <select id="person" onchange="updateURL()">
+        <options>
+        </options>
+    </select>
+    <input type="checkbox" id="assistant" name="assistant" onclick="assistantToggle(this)"/>
+    <label for="assistant" class="assistant-label">Use Assistant</label>
+</div>
+<select id="cameraList"></select>
+<button id="toggleCapture">Start Capture</button>
+<canvas id="canvas" width="640" height="480" style="display:none;"></canvas>
+
+<div id="photos"></div>
+
+<script>
+    const videoElement = document.getElementById('video');
+    const cameraList = document.getElementById('cameraList');
+    const canvas = document.getElementById('canvas');
+    const context = canvas.getContext('2d');
+    const photos = document.getElementById('photos');
+    const maxPhotos = 3;
+    const audioPlayer = document.getElementById('audioPlayer');
+    let audioQueue = []; // Array to hold the queue of audio URLs
+    const toggleCaptureButton = document.getElementById('toggleCapture');
+    let captureInterval;
+    let isCapturing = false;
+    let isFetching = false;
+    let fetchCount = 0;
+    let lastFetchTime = 0;
+    let fetchCallId = 0;
+
+
+    document.addEventListener("DOMContentLoaded", function () {
+        setFormField("assistant");
+        const personaFetch = fetch(`./listAssistants`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        })
+            .then(response => response.json())
+            .then(data => setPersonas(data));
+
+        const moodFetch = fetch(`./listMoods`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        })
+            .then(response => response.json())
+            .then(data => setMoods(data));
+
+
+        Promise.all([personaFetch, moodFetch])
+            .then(([personasData, moodsData]) => {
+                setFormField('person');
+                setFormField('mood');
+                assistantToggle(document.getElementById('assistant'));
+            })
+            .catch(error => {
+                console.error(error);
+            });
+    });
+
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        navigator.mediaDevices.getUserMedia({video: true})
+            .then(function (stream) {
+                videoElement.srcObject = stream;
+                videoElement.play();
+            })
+            .catch(function (error) {
+                console.error('Error accessing camera:', error);
+            });
+    } else {
+        alert('getUserMedia not supported in this browser.');
+    }
+
+    function setPersonas(data) {
+        let select = document.getElementById('person');
+        for (let i = 0; i < data.length; i++) {
+            let option = document.createElement('option');
+            let assistantId = data[i].assistantId;
+            option.value = assistantId
+            option.text = data[i].name;
+            select.appendChild(option);
+        }
+    }
+
+    function setMoods(data) {
+        let select = document.getElementById('mood');
+        for (let i = 0; i < data.length; i++) {
+            var option = document.createElement('option');
+            option.value = data[i];
+            option.text = data[i];
+            select.appendChild(option);
+        }
+    }
+
+    // Function to play the next audio in the queue
+    function playNextAudio() {
+        if (audioQueue.length > 0) {
+            const nextAudioUrl = audioQueue.shift(); // Get and remove the first URL in the queue
+            audioPlayer.src = nextAudioUrl;
+            audioPlayer.play();
+        }
+    }
+
+    // Event listener to play the next audio when the current one ends
+    audioPlayer.addEventListener('ended', playNextAudio);
+
+    // List available cameras
+    async function listCameras() {
+        navigator.mediaDevices.getUserMedia({video: true})
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(device => device.kind === 'videoinput');
+
+        cameraList.innerHTML = '';
+        videoDevices.forEach((device, index) => {
+            const option = document.createElement('option');
+            option.value = device.deviceId;
+            option.text = device.label || `Camera ${index + 1}`;
+            cameraList.appendChild(option);
+        });
+    }
+
+    // Request video stream using the selected camera
+    async function getCameraStream() {
+        const constraints = {
+            video: {
+                deviceId: {exact: cameraList.value}
+            }
+        };
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            videoElement.srcObject = stream;
+        } catch (error) {
+            console.error('Error accessing camera:', error);
+        }
+    }
+
+    // Function to capture and send the last 3 photos to the /realtime endpoint
+    async function captureAndSendPhotos() {
+        // Draw the video frame to the canvas
+        context.drawImage(video, 0, 0, 640, 480);
+        console.log("capturing image")
+        // Create an image element and set its source to the canvas data
+        const img = document.createElement('img');
+        img.src = canvas.toDataURL('image/png');
+
+        // Append the new photo
+        photos.insertBefore(img, photos.firstChild);
+
+        while (photos.childNodes.length > maxPhotos) {
+            photos.removeChild(photos.lastChild);
+        }
+        await narrate();
+    }
+
+    function narrate() {
+        // Call if 3 images, nothing in queue, call isn't in process OR
+        const currentTime = Date.now(); // Get the current time in milliseconds
+        const timeSinceLastFetch = currentTime - lastFetchTime;
+        const imagesData = Array.from(photos.childNodes);
+        let useAssistant = document.getElementById('assistant').checked;
+        let mood = document.getElementById('mood').value;
+        let person = document.getElementById('person').value;
+        let overlapDelay = useAssistant ? 10000 : 5000;
+        if (audioQueue.length === 0 && imagesData.length > 2) {
+            let timeRemaining = audioPlayer.duration - audioPlayer.currentTime;
+            timeRemaining = timeRemaining || 0;
+            if ((fetchCount === 1 && timeSinceLastFetch >= overlapDelay) || fetchCount === 0) {
+                const currentFetchId = `FetchCall-${++fetchCallId}`;
+                console.time(currentFetchId);
+                console.log("Calling service " + currentFetchId + "(" + fetchCount + ")");
+                isFetching = true;
+                fetchCount++;
+                lastFetchTime = currentTime;
+                if(!useAssistant) {
+                    //mood = "Sarcastic";
+                    //person = "asst_CXxwcp1WpNvzFE4UwSFS4AiL";
+                }
+                highlightImages(imagesData);
+                fetch("./realtime?assistantId=" + person + "&mood=" + mood + "&useAssistant=" + useAssistant, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({images: imagesData.map(node => node.src)})
+                })
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! Status: ${response.status}`);
+                        }
+                        return response.text();
+                    })
+                    .then(data => {
+                        if (data) {
+                            if (audioPlayer.paused) {
+                                console.log("playing data: " + data);
+                                audioPlayer.src = data;
+                                audioPlayer.play();
+                            } else {
+                                console.log("queueing data: " + data)
+                                audioQueue.push(data); // Add the URL to the queue if something is already playing
+                            }
+                        }
+                    })
+                    .catch(error => {
+                        if (error instanceof TypeError) {
+                            console.error('There was a problem with the fetch operation:', error.message);
+                        } else if (error.message.startsWith('Network response was not ok')) {
+                            console.error('Server responded with an error:', error.message);
+                        } else {
+                            console.error('Unexpected error:', error);
+                        }
+                    })
+                    .finally(() => {
+                        isFetching = false;
+                        fetchCount--;
+                        console.timeEnd(currentFetchId);
+                    });
+            }
+        }
+    }
+
+    function getUrlParameter(name) {
+        const urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get(name);
+    }
+
+    function setFormField(name) {
+        let el = document.getElementById(name);
+        let val = getUrlParameter(name);
+        console.log("Setting " + name + " to " + val);
+        if(el.type === "checkbox") {
+            el.checked = /^(true|yes|1)$/i.test(val);
+        } else {
+            let priorVal = el.value;
+            el.value = val || priorVal;
+        }
+    }
+    function assistantToggle(el) {
+       /* document.getElementById("person").disabled = !el.checked;
+        document.getElementById("mood").disabled = !el.checked;*/
+        updateURL();
+    }
+
+    function updateURL() {
+        const queryParams = "person=" + document.getElementById('person').value + "&mood=" + document.getElementById('mood').value + "&assistant=" + document.getElementById('assistant').checked;
+        history.replaceState(null, '', '?' + queryParams);
+    }
+
+    function highlightImages(images) {
+        images.forEach(img => {
+            img.classList.add('highlight');
+            setTimeout(() => {
+                img.classList.remove('highlight');
+            }, 500); // Remove the highlight after 0.5 seconds
+        });
+    }
+
+    // When a new camera is selected, update the video stream
+    cameraList.addEventListener('change', getCameraStream);
+
+    // List cameras and start video stream when the page loads
+    listCameras().then(getCameraStream);
+
+    // Capture and send photos every 3 seconds
+    let captureTimeoutId = null;
+    toggleCaptureButton.addEventListener('click', function () {
+        if (isCapturing) {
+            clearInterval(captureInterval);
+            clearTimeout(captureTimeoutId); // Clear the timeout if capturing is stopped manually
+            toggleCaptureButton.textContent = 'Start Capture';
+            isCapturing = false;
+        } else {
+            captureInterval = setInterval(captureAndSendPhotos, 3000); // Adjust the interval as needed
+            toggleCaptureButton.textContent = 'Stop Capture';
+            isCapturing = true;
+
+            // Set a timeout to automatically stop capturing after 10 minutes
+            captureTimeoutId = setTimeout(() => {
+                clearInterval(captureInterval);
+                toggleCaptureButton.textContent = 'Start Capture';
+                isCapturing = false;
+                console.log('Automatic capturing stopped after 10 minutes.');
+            }, 600000); // 10 minutes in milliseconds
+        }
+    });
+
+</script>
+</body>
+</html>

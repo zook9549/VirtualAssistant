@@ -4,15 +4,16 @@ import ai.asktheexpert.virtualassistant.models.Event;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 public class EventService {
 
     @Cacheable("events")
-    public List<Event> getAllEvents() {
+    public Collection<Event> getAllEvents() {
         return events;
     }
 
@@ -32,5 +33,5 @@ public class EventService {
         return result.orElse(null);
     }
 
-    private final List<Event> events = new ArrayList<>();
+    private final Set<Event> events = new HashSet<>();
 }
