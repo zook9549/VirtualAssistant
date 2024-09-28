@@ -87,7 +87,7 @@ public class ChatGPTService implements AnswerService, AssistantService {
         requestBody.put("name", assistant.getName());
         requestBody.put("instructions", assistant.getInstructions());
         requestBody.put("description", assistant.getDescription());
-        requestBody.put("model", "gpt-4-1106-preview");
+        requestBody.put("model", "gpt-4o");
 
         Map<String, String> metaData = new HashMap<>();
         if (assistant.getVoiceId() != null) {
@@ -229,7 +229,7 @@ public class ChatGPTService implements AnswerService, AssistantService {
     private Map<String, Object> prepareRequestBody(List<Map<String, Object>> conversation) {
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("max_tokens", 500);
-        requestBody.put("model", "gpt-4-vision-preview");
+        requestBody.put("model", "gpt-4o");
         requestBody.put("messages", conversation);
         return requestBody;
     }
@@ -280,7 +280,7 @@ public class ChatGPTService implements AnswerService, AssistantService {
         HttpHeaders headers = new HttpHeaders();
         headers.set("Authorization", "Bearer " + chatgptApiKey);
         headers.set("Content-Type", "application/json");
-        headers.set("OpenAI-Beta", "assistants=v1");
+        headers.set("OpenAI-Beta", "assistants=v2");
         return headers;
     }
 

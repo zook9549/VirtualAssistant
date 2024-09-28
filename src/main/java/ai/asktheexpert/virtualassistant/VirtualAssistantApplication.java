@@ -141,7 +141,7 @@ public class VirtualAssistantApplication {
         assistant.setAvatarId(assistant.getName().toLowerCase());
         assistantService.save(assistant);
 
-        if (voiceId == null) {
+        if (voiceId == null || "".equals(voiceId)) {
             byte[] audio;
             if (audioSample != null && !audioSample.isEmpty()) {
                 audio = audioSample.getBytes();
@@ -478,7 +478,7 @@ public class VirtualAssistantApplication {
                 }
             }
         } catch (Exception ex) {
-            log.info("Unable to process event", ex);
+            log.debug("Unable to process event: {}", ex.getMessage());
         }
         return new ResponseEntity<>(HttpStatus.OK);
     }

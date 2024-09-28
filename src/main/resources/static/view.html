@@ -48,6 +48,11 @@
             width: 300px;
         }
 
+
+        .audioStore {
+            width: 100px;
+        }
+
         #photos {
             display: flex;
             justify-content: center;
@@ -62,10 +67,33 @@
             border-radius: 5px;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
         }
+
         .highlight {
             border: 4px solid #ffeb3b; /* Yellow border */
             transition: border-color 0.5s ease-in-out; /* Smooth transition */
         }
+
+        .grid-wrapper {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+        }
+
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 10px;
+            /* Add a max-width if you want to limit the grid's width */
+            max-width: 1000px;
+        }
+
+        .grid-item {
+            border: 2px solid #ccc;
+            border-radius: 5px;
+            padding: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
     </style>
 
 </head>
@@ -92,6 +120,9 @@
 <canvas id="canvas" width="640" height="480" style="display:none;"></canvas>
 
 <div id="photos"></div>
+<div class="grid-wrapper">
+    <div id="fetchResults" class="grid-container"></div>
+</div>
 
 <script>
     const videoElement = document.getElementById('video');
@@ -257,11 +288,25 @@
                 isFetching = true;
                 fetchCount++;
                 lastFetchTime = currentTime;
-                if(!useAssistant) {
-                    //mood = "Sarcastic";
-                    //person = "asst_CXxwcp1WpNvzFE4UwSFS4AiL";
-                }
                 highlightImages(imagesData);
+                // Create a new div element for the fetch result
+                const fetchResult = document.createElement('div');
+                fetchResult.classList.add('grid-item');
+                fetchResult.id = currentFetchId;
+
+                // Add the images and audio URL to the fetch result
+                const imagesHTML = imagesData.map(node => `<img src="${node.src}" alt="Submitted Image" width="100%">`).join('');
+
+                fetchResult.innerHTML = `<div id="id-${currentFetchId}">${currentFetchId}</div>` + imagesHTML + `<div id="status-${currentFetchId}">In Progress</div><audio id="audio-${currentFetchId}" class="audioStore" controls></audio>`;
+
+                // Append the fetch result to the fetchResults container
+                const fetchResultsContainer = document.getElementById('fetchResults');
+                fetchResultsContainer.appendChild(fetchResult);
+
+                while (fetchResultsContainer.children.length > 4) {
+                    fetchResultsContainer.removeChild(fetchResultsContainer.firstChild);
+                }
+
                 fetch("./realtime?assistantId=" + person + "&mood=" + mood + "&useAssistant=" + useAssistant, {
                     method: 'POST',
                     headers: {
@@ -285,6 +330,10 @@
                                 console.log("queueing data: " + data)
                                 audioQueue.push(data); // Add the URL to the queue if something is already playing
                             }
+
+                            let audio = document.getElementById("audio-" + currentFetchId);
+                            audio.src = data;
+                            document.getElementById("status-" + currentFetchId).innerHTML = "Complete";
                         }
                     })
                     .catch(error => {
@@ -295,6 +344,7 @@
                         } else {
                             console.error('Unexpected error:', error);
                         }
+                        document.getElementById("status-" + currentFetchId).innerHTML = "Error";
                     })
                     .finally(() => {
                         isFetching = false;
@@ -360,13 +410,12 @@
             toggleCaptureButton.textContent = 'Stop Capture';
             isCapturing = true;
 
-            // Set a timeout to automatically stop capturing after 10 minutes
             captureTimeoutId = setTimeout(() => {
                 clearInterval(captureInterval);
                 toggleCaptureButton.textContent = 'Start Capture';
                 isCapturing = false;
-                console.log('Automatic capturing stopped after 10 minutes.');
-            }, 600000); // 10 minutes in milliseconds
+                console.log('Automatic capturing stopped after 5 minutes.');
+            }, 300000); // 5 minutes in milliseconds
         }
     });
 
