@@ -25,9 +25,9 @@ public class S3FileStore implements FileStore {
     }
 
 
-    @Cacheable(value = "s3")
+    @Cacheable(value = "s3",  key = "T(ai.asktheexpert.virtualassistant.repositories.FileStore).getFileName(#name, #mediaType, #params)")
     public String cache(byte[] contents, String name, MediaType mediaType, Object... params) throws IOException {
-        String fileName = getFileName(name, mediaType, params);
+        String fileName = FileStore.getFileName(name, mediaType, params);
         String path = save(contents, fileName);
         List<Tag> tags = List.of(new Tag("TempDate", String.valueOf(System.currentTimeMillis())));
         amazonS3.setObjectTagging(new SetObjectTaggingRequest(
@@ -38,10 +38,23 @@ public class S3FileStore implements FileStore {
         return path;
     }
 
-    @Cacheable(value = "s3")
+    @Cacheable(value = "s3",  key = "T(ai.asktheexpert.virtualassistant.repositories.FileStore).getFileName(#name, #mediaType, #params)")
     public String save(byte[] contents, String name, MediaType mediaType, Object... params) throws IOException {
-        String fileName = getFileName(name, mediaType, params);
+        String fileName = FileStore.getFileName(name, mediaType, params);
         return save(contents, fileName);
+    }
+
+    @Cacheable(value = "s3",  key = "T(ai.asktheexpert.virtualassistant.repositories.FileStore).getFileName(#name, #mediaType, #params)")
+    public byte[] get(String name, MediaType mediaType, Object... params) throws IOException {
+        String fileName = FileStore.getFileName(name, mediaType, params);
+        if (exists(fileName)) {
+            log.debug("Fetching file: {}", fileName);
+            S3Object result = amazonS3.getObject(bucket, fileName);
+            return toByteArray(result.getObjectContent());
+        } else {
+            log.info("File does not exist: {}", fileName);
+            return null;
+        }
     }
 
     private String save(byte[] contents, String fileName) throws IOException {
@@ -79,23 +92,9 @@ public class S3FileStore implements FileStore {
         return files;
     }
 
-
-    @Cacheable(value = "s3")
-    public byte[] get(String name, MediaType mediaType, Object... params) throws IOException {
-        String fileName = getFileName(name, mediaType, params);
-        if (exists(fileName)) {
-            log.debug("Fetching file: {}", fileName);
-            S3Object result = amazonS3.getObject(bucket, fileName);
-            return toByteArray(result.getObjectContent());
-        } else {
-            log.info("File does not exist: {}", fileName);
-            return null;
-        }
-    }
-
     @Override
     public String getUrl(String name, MediaType mediaType, Object... params) {
-        String fileName = getFileName(name, mediaType, params);
+        String fileName = FileStore.getFileName(name, mediaType, params);
         if (exists(fileName)) {
             log.trace("Fetching file path: {}", fileName);
             return ((AmazonS3Client) amazonS3).getResourceUrl(bucket, fileName);
@@ -108,7 +107,7 @@ public class S3FileStore implements FileStore {
     @Override
     @CacheEvict(value = "s3")
     public boolean delete(String name, MediaType mediaType, Object... params) {
-        String fileName = getFileName(name, mediaType, params);
+        String fileName = FileStore.getFileName(name, mediaType, params);
         if (exists(fileName)) {
             log.debug("Deleting  file: {}", fileName);
             amazonS3.deleteObject(bucket, fileName);
@@ -120,32 +119,11 @@ public class S3FileStore implements FileStore {
     }
 
     public boolean exists(String name, MediaType mediaType, Object... params) {
-        return amazonS3.doesObjectExist(bucket, getFileName(name, mediaType, params));
+        return amazonS3.doesObjectExist(bucket, FileStore.getFileName(name, mediaType, params));
     }
 
     private boolean exists(String name) {
         return amazonS3.doesObjectExist(bucket, name);
-    }
-
-
-    public String getFileName(String name, MediaType mediaType, Object... params) {
-        StringBuilder result = new StringBuilder();
-        if (name != null && !name.isEmpty()) {
-            result.append(name.toLowerCase().replace(' ', '_'));
-        }
-        if (params != null && params.length > 0) {
-            Object[] lowercaseStrings = new Object[params.length];
-            for (int i = 0; i < params.length; i++) {
-                lowercaseStrings[i] = params[i].toString().toLowerCase();
-
-            }
-            if (!result.isEmpty()) {
-                result.append('-');
-            }
-            result.append(Objects.hash(lowercaseStrings));
-        }
-        result.append('.').append(mediaType.getExtension());
-        return result.toString();
     }
 
     private String getMimeTypeFromExtension(String name) {

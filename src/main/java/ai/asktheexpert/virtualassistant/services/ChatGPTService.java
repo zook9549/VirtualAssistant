@@ -175,7 +175,7 @@ public class ChatGPTService implements AnswerService, AssistantService {
         String answer = getResponseFromApi(requestBody);
 
         if (answer.length() < 100) {
-            log.debug("File: {}", fileStore.getFileName(event.getCamera().getId(), FileStore.MediaType.MP4, event.getEventId()));
+            log.debug("File: {}", FileStore.getFileName(event.getCamera().getId(), FileStore.MediaType.MP4, event.getEventId()));
             throw new RuntimeException("Unable to process image analysis with answer " + answer);
         }
 

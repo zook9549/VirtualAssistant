@@ -63,7 +63,7 @@ public class NestCameraService implements CameraService {
                 .bodyToMono(Map.class)
                 .block();
         String streamUrl = ((Map) ((Map) response.get("results")).get("streamUrls")).get("rtspUrl").toString();
-        String fileName = fileStore.getFileName(camera.getId(), FileStore.MediaType.MP4, id);
+        String fileName = FileStore.getFileName(camera.getId(), FileStore.MediaType.MP4, id);
         byte[] clip = processStream(streamUrl, fileName);
         String url = fileStore.cache(clip, camera.getId(), FileStore.MediaType.MP4, id);
         log.debug("Finished processing stream");

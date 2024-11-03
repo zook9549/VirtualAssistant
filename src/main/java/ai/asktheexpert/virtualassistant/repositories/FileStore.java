@@ -8,6 +8,7 @@ import java.net.URL;
 import java.net.URLConnection;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 public interface FileStore {
     String cache(byte[] contents, String name, MediaType mediaType, Object... params) throws IOException;
@@ -24,7 +25,25 @@ public interface FileStore {
 
     boolean exists(String name, MediaType mediaType, Object... params);
 
-    String getFileName(String name, MediaType mediaType, Object... params);
+    static String getFileName(String name, MediaType mediaType, Object... params) {
+        StringBuilder result = new StringBuilder();
+        if (name != null && !name.isEmpty()) {
+            result.append(name.toLowerCase().replace(' ', '_'));
+        }
+        if (params != null && params.length > 0) {
+            Object[] lowercaseStrings = new Object[params.length];
+            for (int i = 0; i < params.length; i++) {
+                lowercaseStrings[i] = params[i].toString().toLowerCase();
+
+            }
+            if (!result.isEmpty()) {
+                result.append('-');
+            }
+            result.append(Objects.hash(lowercaseStrings));
+        }
+        result.append('.').append(mediaType.getExtension());
+        return result.toString();
+    }
 
     final Map<String, String> MIME_TYPE_MAP = Map.of(
             "image/jpeg", "jpg",

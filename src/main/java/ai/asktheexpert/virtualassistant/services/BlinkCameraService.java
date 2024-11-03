@@ -58,17 +58,17 @@ public class BlinkCameraService implements CameraService {
                 Camera selectedCamera = cameras.stream().filter(camera -> camera.getId().equals("blink/" + cameraId)).findFirst().get();
                 Event event = new Event();
                 event.setEventId(map.get("id").toString());
-                String mediaUrl = MessageFormat.format(postAuthUrl, account.getRegion()) + map.get("media").toString();
                 event.setEventDateTime(ZonedDateTime.parse(map.get("created_at").toString(), DateTimeFormatter.ISO_OFFSET_DATE_TIME).withZoneSameInstant(ZoneId.systemDefault()).toLocalDateTime());
                 event.setCamera(selectedCamera);
-                String medialUrl = fileStore.getUrl(event.getCamera().getId(), FileStore.MediaType.MP4, event.getEventId());
+                String mediaUrl = fileStore.getUrl(event.getCamera().getId(), FileStore.MediaType.MP4, event.getEventId());
                 try {
-                    if (medialUrl == null) {
-                        String videoUrl = fileStore.save(getVideo(account, mediaUrl), event.getCamera().getId(), FileStore.MediaType.MP4, event.getEventId());
+                    if (mediaUrl == null) {
+                        String blinkVideoUrl = MessageFormat.format(postAuthUrl, account.getRegion()) + map.get("media").toString();
+                        String videoUrl = fileStore.save(getVideo(account, blinkVideoUrl), event.getCamera().getId(), FileStore.MediaType.MP4, event.getEventId());
                         event.setVideoUrl(videoUrl);
                     } else {
-                        log.debug("Existing file found at {}", medialUrl);
-                        event.setVideoUrl(medialUrl);
+                        log.debug("Existing file found at {}", mediaUrl);
+                        event.setVideoUrl(mediaUrl);
                     }
                     String narration = answerService.narrate(event, null);
                     event.setNarration(narration);
@@ -102,7 +102,7 @@ public class BlinkCameraService implements CameraService {
 
         ResponseEntity<Map> response = restTemplate.exchange(videoUrl, HttpMethod.POST, entity, Map.class);
         String streamUrl = response.getBody().get("server").toString();
-        String fileName = fileStore.getFileName(camera.getId(), FileStore.MediaType.MP4, id);
+        String fileName = FileStore.getFileName(camera.getId(), FileStore.MediaType.MP4, id);
         byte[] clip = processStream(streamUrl, fileName);
         String url = fileStore.cache(clip, camera.getId(), FileStore.MediaType.MP4, id);
         return url;
