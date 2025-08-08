@@ -7,6 +7,8 @@ import org.apache.commons.io.FilenameUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
@@ -15,17 +17,19 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 @Service
 public class S3FileStore implements FileStore {
 
-    public S3FileStore(AmazonS3 amazonS3) {
+    public S3FileStore(AmazonS3 amazonS3, CacheManager cacheManager) {
         this.amazonS3 = amazonS3;
+        this.cacheManager = cacheManager;
     }
 
-
-    @Cacheable(value = "s3",  key = "T(ai.asktheexpert.virtualassistant.repositories.FileStore).getFileName(#name, #mediaType, #params)")
     public String cache(byte[] contents, String name, MediaType mediaType, Object... params) throws IOException {
         String fileName = FileStore.getFileName(name, mediaType, params);
         String path = save(contents, fileName);
@@ -38,13 +42,12 @@ public class S3FileStore implements FileStore {
         return path;
     }
 
-    @Cacheable(value = "s3",  key = "T(ai.asktheexpert.virtualassistant.repositories.FileStore).getFileName(#name, #mediaType, #params)")
     public String save(byte[] contents, String name, MediaType mediaType, Object... params) throws IOException {
         String fileName = FileStore.getFileName(name, mediaType, params);
         return save(contents, fileName);
     }
 
-    @Cacheable(value = "s3",  key = "T(ai.asktheexpert.virtualassistant.repositories.FileStore).getFileName(#name, #mediaType, #params)")
+    @Cacheable(value = S3_CACHE, key = "T(ai.asktheexpert.virtualassistant.repositories.FileStore).getFileName(#name, #mediaType, #params)")
     public byte[] get(String name, MediaType mediaType, Object... params) throws IOException {
         String fileName = FileStore.getFileName(name, mediaType, params);
         if (exists(fileName)) {
@@ -69,6 +72,12 @@ public class S3FileStore implements FileStore {
             metaData.setContentType(getMimeTypeFromExtension(fileName));
             PutObjectRequest objectRequest = new PutObjectRequest(bucket, fileName, is, metaData);
             amazonS3.putObject(objectRequest);
+
+            Cache cache = cacheManager.getCache(S3_CACHE);
+            if (cache != null) {
+                cache.put(fileName, contents);
+            }
+
             return ((AmazonS3Client) amazonS3).getResourceUrl(bucket, fileName);
         }
     }
@@ -153,6 +162,8 @@ public class S3FileStore implements FileStore {
     private String bucket;
 
     private final AmazonS3 amazonS3;
+    private final CacheManager cacheManager;
 
+    public static final String S3_CACHE = "s3";
     private static final Logger log = LoggerFactory.getLogger(S3FileStore.class);
 }

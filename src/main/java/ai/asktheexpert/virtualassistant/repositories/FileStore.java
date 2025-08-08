@@ -45,14 +45,14 @@ public interface FileStore {
         return result.toString();
     }
 
-    final Map<String, String> MIME_TYPE_MAP = Map.of(
+    Map<String, String> MIME_TYPE_MAP = Map.of(
             "image/jpeg", "jpg",
             "video/mp4", "mp4",
             "audio/mpeg", "mp3"
     );
 
     enum MediaType {
-        MP4("mp4", "video/mp4"), MP3("mp3", "audio/mpeg"), JPG("jpg","image/jpeg"), TXT("txt","text/plain");
+        MP4("mp4", "video/mp4"), MP3("mp3", "audio/mpeg"), JPG("jpg", "image/jpeg"), TXT("txt", "text/plain");
 
         private final String value;
         private final String extension;

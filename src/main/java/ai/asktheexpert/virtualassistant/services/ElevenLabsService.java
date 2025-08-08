@@ -35,9 +35,9 @@ public class ElevenLabsService implements TextToSpeechService {
 
 
         Map<String, Object> config = new HashMap<>();
-        config.put("stability", ".4");
-        config.put("similarity_boost", "0.2");
-        config.put("style", "0.5");
+        config.put("stability", "0.2");
+        config.put("similarity_boost", "0.8");
+        config.put("style", "0.6 ");
         config.put("use_speaker_boost", "true");
 
         Map<String, Object> payload = new HashMap<>();

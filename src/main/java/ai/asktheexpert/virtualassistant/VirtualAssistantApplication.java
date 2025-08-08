@@ -1,8 +1,10 @@
 package ai.asktheexpert.virtualassistant;
 
 import ai.asktheexpert.virtualassistant.models.*;
+import ai.asktheexpert.virtualassistant.models.Event;
 import ai.asktheexpert.virtualassistant.repositories.FileStore;
 import ai.asktheexpert.virtualassistant.services.*;
+import ai.asktheexpert.virtualassistant.utilities.ImageUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
@@ -23,12 +25,14 @@ import org.springframework.security.oauth2.client.annotation.RegisteredOAuth2Aut
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.awt.*;
 import java.net.URL;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.List;
 
 @SpringBootApplication
 @RestController
@@ -150,7 +154,8 @@ public class VirtualAssistantApplication {
             }
             voiceId = textToSpeechService.save(assistant.getAssistantId(), role, audio);
         }
-        String profilePicUrl = fileStore.save(profilePicture.getBytes(), assistant.getAssistantId(), FileStore.MediaType.JPG);
+        byte[] profilePicSized = ImageUtils.resizeIfNeeded(profilePicture.getBytes());
+        String profilePicUrl = fileStore.save(profilePicSized, assistant.getAssistantId(), FileStore.MediaType.JPG);
         assistant.setVoiceId(voiceId);
         assistant.setProfilePicture(profilePicUrl);
         assistantService.update(assistant);
@@ -199,32 +204,18 @@ public class VirtualAssistantApplication {
     public void getPersonaVideos() {
         for (Assistant assistant : availableAssistants.values()) {
             if (isPersonaAvailableToAnimate(assistant)) {
-                createIdleVideo(assistant);
-                createStartingVideos(assistant);
-                createSmallTalkVideos(assistant);
-                createIntroVideos(assistant);
+                try {
+                    createIdleVideo(assistant);
+                    createStartingVideos(assistant);
+                    createSmallTalkVideos(assistant);
+                    createIntroVideos(assistant);
+                } catch (Exception ex) {
+                    log.warn("Unable to generate videos for {}. Removing as an available assistant", assistant, ex);
+                    availableAssistants.remove(assistant.getAssistantId());
+                }
             } else {
                 log.trace("Persona can't be animated because the profile image doesn't exist: {}", assistant);
             }
-        }
-    }
-
-    private void createIdleVideo(Assistant assistant) {
-        try {
-            if (assistant.getIdleVideo() == null) {
-                String idleVideoUrl = null;
-                String person = assistant.getAssistantId();
-                if (!fileStore.exists(person, FileStore.MediaType.MP4)) {
-                    log.debug("Creating idle video for {}", person);
-                    byte[] video = avatarService.getVideo(assistant, "<break time=\"20000ms\"/>");
-                    idleVideoUrl = fileStore.save(video, person, FileStore.MediaType.MP4);
-                } else if (assistant.getIdleVideo() == null) {
-                    idleVideoUrl = fileStore.getUrl(person, FileStore.MediaType.MP4);
-                }
-                assistant.setIdleVideo(idleVideoUrl);
-            }
-        } catch (Exception ex) {
-            log.warn("Unable to generate idle video for {}", assistant, ex);
         }
     }
 
@@ -236,58 +227,61 @@ public class VirtualAssistantApplication {
         return getVideo(assistant, answer, audioUrl, false);
     }
 
-    private void createStartingVideos(Assistant assistant) {
+    private void createIdleVideo(Assistant assistant) throws Exception {
+        if (assistant.getIdleVideo() == null) {
+            String idleVideoUrl = null;
+            String person = assistant.getAssistantId();
+            if (!fileStore.exists(person, FileStore.MediaType.MP4)) {
+                log.debug("Creating idle video for {}", person);
+                byte[] video = avatarService.getVideo(assistant);
+                idleVideoUrl = fileStore.save(video, person, FileStore.MediaType.MP4);
+            } else if (assistant.getIdleVideo() == null) {
+                idleVideoUrl = fileStore.getUrl(person, FileStore.MediaType.MP4);
+            }
+            assistant.setIdleVideo(idleVideoUrl);
+        }
+    }
+
+    private void createStartingVideos(Assistant assistant) throws Exception {
         List<String> startingVideos = assistant.getStartingVideos();
         for (int i = startingVideos.size() + 1; i <= startingNumber; i++) {
-            try {
-                String suffix = "-starting" + i;
-                if (startingVideos.stream().noneMatch(s -> s.contains(suffix))) {
-                    String fileName = assistant.getAssistantId() + suffix;
-                    log.debug("Creating starting talk {}", fileName);
-                    Moods[] moods = {Moods.Anticipation, Moods.Sarcastic, Moods.Enthusiasm};
-                    byte[] video = getVideo(startingPrompt, moods, assistant);
-                    fileStore.save(video, fileName, FileStore.MediaType.MP4);
-                    startingVideos.add(fileStore.getUrl(fileName, FileStore.MediaType.MP4));
-                }
-            } catch (Exception ex) {
-                log.warn("Unable to generate starting talk for {}", assistant, ex);
+            String suffix = "-starting" + i;
+            if (startingVideos.stream().noneMatch(s -> s.contains(suffix))) {
+                String fileName = assistant.getAssistantId() + suffix;
+                log.debug("Creating starting talk {}", fileName);
+                Moods[] moods = {Moods.Anticipation, Moods.Sarcastic, Moods.Enthusiasm};
+                byte[] video = getVideo(startingPrompt, moods, assistant);
+                fileStore.save(video, fileName, FileStore.MediaType.MP4);
+                startingVideos.add(fileStore.getUrl(fileName, FileStore.MediaType.MP4));
             }
         }
     }
 
-    private void createSmallTalkVideos(Assistant assistant) {
+    private void createSmallTalkVideos(Assistant assistant) throws Exception {
         List<String> smallTalkVideos = assistant.getSmallTalkVideos();
         for (int i = smallTalkVideos.size() + 1; i <= smallTalkNumber; i++) {
-            try {
-                String suffix = "-smalltalk" + i;
-                if (smallTalkVideos.stream().noneMatch(s -> s.contains(suffix))) {
-                    String fileName = assistant.getAssistantId() + suffix;
-                    log.debug("Creating small talk {}", fileName);
-                    byte[] video = getVideo(smallTalkPrompt, new Moods[]{Moods.Enthusiasm}, assistant);
-                    fileStore.save(video, fileName, FileStore.MediaType.MP4);
-                    smallTalkVideos.add(fileStore.getUrl(fileName, FileStore.MediaType.MP4));
-                }
-            } catch (Exception ex) {
-                log.warn("Unable to generate small talk for {}", assistant, ex);
+            String suffix = "-smalltalk" + i;
+            if (smallTalkVideos.stream().noneMatch(s -> s.contains(suffix))) {
+                String fileName = assistant.getAssistantId() + suffix;
+                log.debug("Creating small talk {}", fileName);
+                byte[] video = getVideo(smallTalkPrompt, new Moods[]{Moods.Enthusiasm}, assistant);
+                fileStore.save(video, fileName, FileStore.MediaType.MP4);
+                smallTalkVideos.add(fileStore.getUrl(fileName, FileStore.MediaType.MP4));
             }
         }
     }
 
-    private void createIntroVideos(Assistant assistant) {
+    private void createIntroVideos(Assistant assistant) throws Exception {
         List<String> introVideos = assistant.getIntroVideos();
         for (int i = introVideos.size() + 1; i <= introNumber; i++) {
-            try {
-                String suffix = "-intro" + i;
-                if (introVideos.stream().noneMatch(s -> s.contains(suffix))) {
-                    String fileName = assistant.getAssistantId() + suffix;
-                    log.debug("Creating intro {}", fileName);
-                    Moods[] moods = {Moods.Sarcastic, Moods.Enthusiasm};
-                    byte[] video = getVideo(introPrompt, moods, assistant);
-                    fileStore.save(video, fileName, FileStore.MediaType.MP4);
-                    introVideos.add(fileStore.getUrl(fileName, FileStore.MediaType.MP4));
-                }
-            } catch (Exception ex) {
-                log.warn("Unable to generate intro for {}", assistant, ex);
+            String suffix = "-intro" + i;
+            if (introVideos.stream().noneMatch(s -> s.contains(suffix))) {
+                String fileName = assistant.getAssistantId() + suffix;
+                log.debug("Creating intro {}", fileName);
+                Moods[] moods = {Moods.Sarcastic, Moods.Enthusiasm};
+                byte[] video = getVideo(introPrompt, moods, assistant);
+                fileStore.save(video, fileName, FileStore.MediaType.MP4);
+                introVideos.add(fileStore.getUrl(fileName, FileStore.MediaType.MP4));
             }
         }
     }

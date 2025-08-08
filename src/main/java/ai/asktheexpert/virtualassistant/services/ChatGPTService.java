@@ -49,7 +49,12 @@ public class ChatGPTService implements AnswerService, AssistantService {
 
         List<Assistant> assistants = new ArrayList<>();
         for (Map result : results) {
-            assistants.add(createAssistantFromMap(result));
+            String name = (String) result.get("name");
+            if(!name.endsWith("-x")) {
+                assistants.add(createAssistantFromMap(result));
+            } else {
+                log.info("Skipping assistant since it contains the ignore suffix of -x: {}", name);
+            }
         }
         assistants.sort(Comparator.comparing(Assistant::getName));
         return assistants;
@@ -87,7 +92,7 @@ public class ChatGPTService implements AnswerService, AssistantService {
         requestBody.put("name", assistant.getName());
         requestBody.put("instructions", assistant.getInstructions());
         requestBody.put("description", assistant.getDescription());
-        requestBody.put("model", "gpt-4o");
+        requestBody.put("model", chatGptModel);
 
         Map<String, String> metaData = new HashMap<>();
         if (assistant.getVoiceId() != null) {
@@ -228,8 +233,10 @@ public class ChatGPTService implements AnswerService, AssistantService {
 
     private Map<String, Object> prepareRequestBody(List<Map<String, Object>> conversation) {
         Map<String, Object> requestBody = new HashMap<>();
-        requestBody.put("max_tokens", 500);
-        requestBody.put("model", "gpt-4o");
+        /*requestBody.put("max_completion_tokens", 500);
+        requestBody.put("reasoning_effort", "low");
+        requestBody.put("verbosity", "low");*/
+        requestBody.put("model", chatGptModel);
         requestBody.put("messages", conversation);
         return requestBody;
     }
@@ -320,7 +327,7 @@ public class ChatGPTService implements AnswerService, AssistantService {
             } else {
                 isComplete = true;
                 if (!"completed".equalsIgnoreCase(status)) {
-                    throw new RuntimeException("Error status returned from ChatGPT while running conversation thread: " + status + " for run " + runId);
+                    throw new RuntimeException("Error status returned from ChatGPT while running conversation thread: " + status + " for run " + runId + " :: " + response.getBody().get("last_error"));
                 }
             }
         }
@@ -450,6 +457,8 @@ public class ChatGPTService implements AnswerService, AssistantService {
     private String chatgptApiKey;
     @Value("${chatgpt.api.url}")
     private String chatGptUrl;
+    @Value("${chatgpt.model}")
+    private String chatGptModel;
     @Value("${narration.prompt}")
     private String narrationPrompt;
     @Value("#{${camera.context}}")

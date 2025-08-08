@@ -1,7 +1,8 @@
 #!/bin/sh
 
 export TZ='America/New_York'
-export PATH=/apps/ffmpeg/ffmpeg-6.1-amd64-static:$PATH
+export FFMPEG_PATH=/apps/ffmpeg/ffmpeg-6.1-amd64-static
+export PATH=$FFMPEG_PATH:$PATH
 
 cd /apps/VirtualAssistant
 

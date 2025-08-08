@@ -33,49 +33,44 @@ public class DigitalIDService implements AvatarService, CreditService {
         Map<String, Object> script = new HashMap<>();
         script.put("type", "audio");
         script.put("audio_url", audioUrl.toString());
-        return getVideo(assistant, script);
+        return createVideo(assistant, script);
     }
 
-    public byte[] getVideo(Assistant assistant, String text) throws Exception {
+    public byte[] getVideo(Assistant assistant) throws Exception {
         Map<String, Object> script = new HashMap<>();
         script.put("type", "text");
         script.put("ssml", "true");
-        script.put("input", text);
-        return getVideo(assistant, script);
+        script.put("input", "<break time=\"20000ms\"/>");
+        return createVideo(assistant, null);
     }
 
-    private byte[] getVideo(Assistant assistant, Map<String, Object> audioHeader) throws Exception {
-        byte[] video;
-        String imgUrl = fileStore.getUrl(assistant.getAssistantId(), FileStore.MediaType.JPG);
-
-        Map<String, Object> config = new HashMap<>();
-        config.put("fluent", "false");
-        config.put("pad_audio", "0.0");
-        config.put("result_format", "mp4");
+    private byte[] createVideo(Assistant assistant, Map<String, Object> audioHeader) throws Exception {
+        String imgUrl = assistant.getProfilePicture();
+        if(imgUrl == null) {
+            imgUrl = fileStore.getUrl(assistant.getAssistantId(), FileStore.MediaType.JPG);
+        }
 
         Map<String, Object> payload = new HashMap<>();
         payload.put("source_url", imgUrl);
+
+        Map<String, Object> config = new HashMap<>();
+        config.put("result_format", "mp4");
+
+        String endpoint;
+        if(audioHeader != null) {
+            endpoint = "talks";
+            config.put("fluent", "false");
+            config.put("pad_audio", "0.0");
+            payload.put("script", audioHeader);
+        } else {
+            log.info("Creating using animations endpoint");
+            payload.put("driver_url", "bank://nostalgia/");
+            endpoint = "animations";
+        }
         payload.put("config", config);
-        payload.put("script", audioHeader);
 
         HttpEntity<?> entity = getHttpEntity(payload);
-
-        RestTemplate restTemplate = new RestTemplate();
-        ResponseEntity<Map> response = restTemplate.exchange(didUrl + "/talks", HttpMethod.POST, entity, Map.class);
-        String id = Objects.requireNonNull(response.getBody()).get("id").toString();
-        log.debug("Generated video request {}", id);
-        int maxTime = 60000;
-        int totalTime = 0;
-        int waitTime = 1000;
-        do {
-            Thread.sleep(waitTime);
-            video = fetchVideo(id);
-            totalTime += waitTime;
-        } while (video == null && totalTime < maxTime);
-        if (video == null) {
-            throw new Exception("Unable to get video for " + id);
-        }
-        return video;
+        return fetchVideo(endpoint, entity);
     }
 
     public int creditsRemaining() {
@@ -88,22 +83,37 @@ public class DigitalIDService implements AvatarService, CreditService {
         return remaining;
     }
 
-    private byte[] fetchVideo(String videoId) throws Exception {
-        byte[] results = null;
-        HttpEntity<?> entity = getHttpEntity();
+    private byte[] fetchVideo(String endPoint, HttpEntity<?> videoEntity) throws Exception {
+        RestTemplate restVideoTemplate = new RestTemplate();
+        ResponseEntity<Map> videoResponse = restVideoTemplate.exchange(didUrl + "/" + endPoint, HttpMethod.POST, videoEntity, Map.class);
+        String videoId = Objects.requireNonNull(videoResponse.getBody()).get("id").toString();
+        log.debug("Generated video request {}", videoId);
 
-        RestTemplate restTemplate = new RestTemplate();
-        ResponseEntity<Map> response = restTemplate.exchange(didUrl + "/talks/" + videoId, HttpMethod.GET, entity, Map.class);
-        String status = Objects.requireNonNull(response.getBody()).get("status").toString();
-        if (status.equals("done")) {
-            String resultUrl = (String) response.getBody().get("result_url");
-            if (resultUrl != null && FileStore.existsAtUrl(resultUrl)) {
-                results = FileStore.downloadFileBytes(new URL(resultUrl));
+        byte[] video = null;
+        HttpEntity<?> entity = getHttpEntity();
+        int maxTime = 60000;
+        int totalTime = 0;
+        int waitTime = 1000;
+        do {
+            Thread.sleep(waitTime);
+            RestTemplate restTemplate = new RestTemplate();
+            ResponseEntity<Map> response = restTemplate.exchange(didUrl + "/" + endPoint + "/" + videoId, HttpMethod.GET, entity, Map.class);
+            String status = Objects.requireNonNull(response.getBody()).get("status").toString();
+            if (status.equals("done")) {
+                String resultUrl = (String) response.getBody().get("result_url");
+                if (resultUrl != null && FileStore.existsAtUrl(resultUrl)) {
+                    video = FileStore.downloadFileBytes(new URL(resultUrl));
+                }
+            } else if (!isPending(status)) {
+                throw new Exception("Unable to get video for " + videoId);
             }
-        } else if (!isPending(status)) {
-            throw new Exception("Unable to get idle video for " + videoId);
+            totalTime += waitTime;
+        } while (video == null && totalTime < maxTime);
+
+        if (video == null) {
+            throw new Exception("Unable to get video in allocated time for " + videoId);
         }
-        return results;
+        return video;
     }
 
     private HttpEntity<?> getHttpEntity() {

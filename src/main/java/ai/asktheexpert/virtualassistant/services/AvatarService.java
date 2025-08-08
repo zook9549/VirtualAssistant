@@ -6,5 +6,5 @@ import java.net.URL;
 
 public interface AvatarService extends CreditService {
     byte[] getVideo(Assistant assistant, URL audioUrl) throws Exception;
-    byte[] getVideo(Assistant assistant, String text) throws Exception;
+    byte[] getVideo(Assistant assistant) throws Exception;
 }
